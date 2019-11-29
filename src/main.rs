@@ -106,6 +106,14 @@ fn tokenize_test() {
     assert!(t6.unwrap().kind == TokenKind::Eof);
 }
 
+#[test]
+fn expect_number_test() {
+    let t1 = tokenize("1");
+    assert!(expect_number(&t1) == Some(1));
+    let t2 = tokenize("32");
+    assert!(expect_number(&t2) == Some(32));
+}
+
 fn parse_arguments() -> Result<String, std::io::Error> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
@@ -119,29 +127,23 @@ fn parse_arguments() -> Result<String, std::io::Error> {
     Ok(args[1].clone())
 }
 
-fn read_number(input: &str) -> Option<(usize, String)> {
-    let mut iter = input.chars();
-    let mut s = "".to_string();
-    let mut i = 0;
-    loop {
-        match iter.next() {
-            Some(c) => {
-                if let Some(n) = c.to_digit(10) {
-                    i += 1;
-                    s += &n.to_string();
-                } else {
-                    break;
-                }
-            }
-            _ => {
-                break;
-            }
-        }
-    }
-    if i == 0 {
-        None
+fn error(s: &str) -> Result<(), std::io::Error> {
+    Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, s))
+}
+
+fn expect_number(token: &Option<Box<Token>>) -> Option<i64> {
+    if let Some(t) = token {
+        t.val
     } else {
-        Some((i, s))
+        None
+    }
+}
+
+fn next_token(token: Option<Box<Token>>) -> Option<Box<Token>> {
+    if let Some(t) = token {
+        t.next
+    } else {
+        None
     }
 }
 
@@ -152,42 +154,42 @@ fn main() -> Result<(), std::io::Error> {
     println!(".global main");
     println!("main:");
 
-    let mut iter = arg1.chars();
-    if let Some(t) = read_number(iter.as_str()) {
-        iter.nth(t.0 - 1);
-        println!("  mov rax, {}", t.1);
+    let mut token = tokenize(&arg1);
+    if let Some(v) = expect_number(&token) {
+        println!("  mov rax, {}", v);
+        token = next_token(token);
     } else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Unexpected char",
-        ));
+        return error("Unexpected char");
     }
 
     loop {
-        if let Some(c) = iter.next() {
-            match c {
-                '+' | '-' => {
-                    if let Some(t) = read_number(iter.as_str()) {
-                        iter.nth(t.0 - 1);
-                        match c {
-                            '+' => println!("  add rax, {}", t.1),
-                            '-' => println!("  sub rax, {}", t.1),
-                            _ => unreachable!(),
+        match &token {
+            Some(t) => match t.kind {
+                TokenKind::Eof => break,
+                TokenKind::Reserved => {
+                    if let Some(op) = &t.string {
+                        match op.as_str() {
+                            "+" => {
+                                token = next_token(token);
+                                let v = expect_number(&token);
+                                println!("  add rax, {}", v.unwrap());
+                                token = next_token(token);
+                            }
+                            "-" => {
+                                token = next_token(token);
+                                let v = expect_number(&token);
+                                println!("  sub rax, {}", v.unwrap());
+                                token = next_token(token);
+                            }
+                            _ => return error("Unexpected char"),
                         }
                     }
                 }
-                _ => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Unexpected char",
-                    ));
-                }
-            }
-        } else {
-            break;
+                _ => return error("Unexpected char"),
+            },
+            _ => break,
         }
     }
-
     println!("  ret");
     Ok(())
 }
