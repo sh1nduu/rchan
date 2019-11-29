@@ -32,18 +32,33 @@ fn tokenize<'a>(input: &'a str) -> Option<Box<Token>> {
         string: None,
     }));
     let mut current = &mut head;
-    for c in input.chars() {
-        match c {
-            '+' | '-' => {
-                let new_token = Token::new(TokenKind::Reserved, c.to_string());
-                current = assign_next_and_replace(current, new_token);
-            }
-            c if is_digit(c) => {
-                let mut new_token = Token::new(TokenKind::Num, c.to_string());
-                new_token.val = c.to_digit(10).map(|a| i64::from(a));
-                current = assign_next_and_replace(current, new_token);
-            }
-            _ => continue,
+    let mut iter = input.chars();
+    let mut is_prev_digit = false;
+    loop {
+        match iter.next() {
+            Some(c) => match c {
+                c if c.is_whitespace() => continue,
+                '+' | '-' => {
+                    let new_token = Token::new(TokenKind::Reserved, c.to_string());
+                    current = assign_next_and_replace(current, new_token);
+                    is_prev_digit = false;
+                }
+                c if is_digit(c) && !is_prev_digit => {
+                    let mut new_token = Token::new(TokenKind::Num, c.to_string());
+                    new_token.val = c.to_digit(10).map(|a| i64::from(a));
+                    current = assign_next_and_replace(current, new_token);
+                    is_prev_digit = true;
+                }
+                c if is_digit(c) && is_prev_digit => {
+                    if let Some(x) = c.to_digit(10).map(|a| i64::from(a)) {
+                        if let Some(cur) = current {
+                            cur.val = cur.val.map(|a| a * 10 + x);
+                        }
+                    }
+                }
+                _ => break,
+            },
+            _ => break,
         }
     }
     match head {
@@ -80,6 +95,10 @@ fn tokenize_test() {
     assert!(t2.unwrap().string.unwrap() == '+'.to_string());
     let t3 = tokenize("1+2").unwrap().next.unwrap().next;
     assert!(t3.unwrap().val.unwrap() == 2);
+    let t4 = tokenize("34+5");
+    assert!(t4.unwrap().val.unwrap() == 34);
+    let t5 = tokenize("67 - 8").unwrap().next.unwrap().next;
+    assert!(t5.unwrap().val.unwrap() == 8);
 }
 
 fn parse_arguments() -> Result<String, std::io::Error> {
