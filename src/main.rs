@@ -1,5 +1,6 @@
 use std::env;
 
+#[derive(PartialEq)]
 pub enum TokenKind {
     Reserved,
     Num,
@@ -14,12 +15,12 @@ pub struct Token {
 }
 
 impl Token {
-    fn new(kind: TokenKind, string: String) -> Token {
+    fn new(kind: TokenKind, string: Option<String>) -> Token {
         Token {
             kind: kind,
             next: None,
             val: None,
-            string: Some(string),
+            string: string,
         }
     }
 }
@@ -39,12 +40,12 @@ fn tokenize<'a>(input: &'a str) -> Option<Box<Token>> {
             Some(c) => match c {
                 c if c.is_whitespace() => continue,
                 '+' | '-' => {
-                    let new_token = Token::new(TokenKind::Reserved, c.to_string());
+                    let new_token = Token::new(TokenKind::Reserved, Some(c.to_string()));
                     current = assign_next_and_replace(current, new_token);
                     is_prev_digit = false;
                 }
                 c if is_digit(c) && !is_prev_digit => {
-                    let mut new_token = Token::new(TokenKind::Num, c.to_string());
+                    let mut new_token = Token::new(TokenKind::Num, Some(c.to_string()));
                     new_token.val = c.to_digit(10).map(|a| i64::from(a));
                     current = assign_next_and_replace(current, new_token);
                     is_prev_digit = true;
@@ -61,6 +62,8 @@ fn tokenize<'a>(input: &'a str) -> Option<Box<Token>> {
             _ => break,
         }
     }
+    let eof_token = Token::new(TokenKind::Eof, None);
+    let _ = assign_next_and_replace(current, eof_token);
     match head {
         Some(head) => head.next,
         None => None,
@@ -99,6 +102,8 @@ fn tokenize_test() {
     assert!(t4.unwrap().val.unwrap() == 34);
     let t5 = tokenize("67 - 8").unwrap().next.unwrap().next;
     assert!(t5.unwrap().val.unwrap() == 8);
+    let t6 = tokenize("91 + 2").unwrap().next.unwrap().next.unwrap().next;
+    assert!(t6.unwrap().kind == TokenKind::Eof);
 }
 
 fn parse_arguments() -> Result<String, std::io::Error> {
