@@ -1,5 +1,87 @@
 use std::env;
 
+pub enum TokenKind {
+    Reserved,
+    Num,
+    Eof,
+}
+
+pub struct Token {
+    pub kind: TokenKind,
+    pub next: Option<Box<Token>>,
+    pub val: Option<i64>,
+    pub string: Option<String>,
+}
+
+impl Token {
+    fn new(kind: TokenKind, string: String) -> Token {
+        Token {
+            kind: kind,
+            next: None,
+            val: None,
+            string: Some(string),
+        }
+    }
+}
+
+fn tokenize<'a>(input: &'a str) -> Option<Box<Token>> {
+    let mut head = Some(Box::new(Token {
+        kind: TokenKind::Reserved,
+        next: None,
+        val: None,
+        string: None,
+    }));
+    let mut current = &mut head;
+    for c in input.chars() {
+        match c {
+            '+' | '-' => {
+                let new_token = Token::new(TokenKind::Reserved, c.to_string());
+                current = assign_next_and_replace(current, new_token);
+            }
+            c if is_digit(c) => {
+                let mut new_token = Token::new(TokenKind::Num, c.to_string());
+                new_token.val = c.to_digit(10).map(|a| i64::from(a));
+                current = assign_next_and_replace(current, new_token);
+            }
+            _ => continue,
+        }
+    }
+    match head {
+        Some(head) => head.next,
+        None => None,
+    }
+}
+
+fn assign_next_and_replace(
+    mut current: &mut Option<Box<Token>>,
+    new_token: Token,
+) -> &mut Option<Box<Token>> {
+    let mut ptr = current as *mut Option<Box<Token>>;
+    unsafe {
+        if let Some(cur) = &mut *ptr {
+            cur.next = Some(Box::new(new_token));
+            let next = &mut cur.next as *mut Option<Box<Token>>;
+            ptr = next;
+        }
+        current = ptr.as_mut().unwrap();
+    }
+    current
+}
+
+fn is_digit(c: char) -> bool {
+    c.to_digit(10).is_some()
+}
+
+#[test]
+fn tokenize_test() {
+    let t1 = tokenize("+");
+    assert!(t1.unwrap().string.unwrap() == '+'.to_string());
+    let t2 = tokenize("+-");
+    assert!(t2.unwrap().string.unwrap() == '+'.to_string());
+    let t3 = tokenize("1+2").unwrap().next.unwrap().next;
+    assert!(t3.unwrap().val.unwrap() == 2);
+}
+
 fn parse_arguments() -> Result<String, std::io::Error> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
