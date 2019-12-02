@@ -25,7 +25,28 @@ impl Token {
     }
 }
 
-fn tokenize<'a>(input: &'a str) -> Option<Box<Token>> {
+enum RError {
+    Nothing,
+    Tokenize(usize, String),
+}
+
+impl RError {
+    fn build_error_message<'a>(&self, input: &'a str) -> String {
+        match self {
+            Self::Tokenize(i, s) => {
+                let mut out = format!("{}\n", input);
+                for _ in 0..*i {
+                    out += " ";
+                }
+                out += format!("^ {}\n", s).as_str();
+                out
+            }
+            _ => "Unexpected Error".to_string(),
+        }
+    }
+}
+
+fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
     let mut head = Some(Box::new(Token {
         kind: TokenKind::Reserved,
         next: None,
@@ -33,11 +54,11 @@ fn tokenize<'a>(input: &'a str) -> Option<Box<Token>> {
         string: None,
     }));
     let mut current = &mut head;
-    let mut iter = input.chars();
+    let mut iter = input.chars().enumerate();
     let mut is_prev_digit = false;
     loop {
         match iter.next() {
-            Some(c) => match c {
+            Some((i, c)) => match c {
                 c if c.is_whitespace() => continue,
                 '+' | '-' => {
                     let new_token = Token::new(TokenKind::Reserved, Some(c.to_string()));
@@ -57,7 +78,7 @@ fn tokenize<'a>(input: &'a str) -> Option<Box<Token>> {
                         }
                     }
                 }
-                _ => break,
+                _ => return Err(RError::Tokenize(i, "Invalid character".to_string())),
             },
             _ => break,
         }
@@ -65,8 +86,8 @@ fn tokenize<'a>(input: &'a str) -> Option<Box<Token>> {
     let eof_token = Token::new(TokenKind::Eof, None);
     let _ = assign_next_and_replace(current, eof_token);
     match head {
-        Some(head) => head.next,
-        None => None,
+        Some(head) => Ok(head.next),
+        None => Err(RError::Nothing),
     }
 }
 
@@ -92,25 +113,33 @@ fn is_digit(c: char) -> bool {
 
 #[test]
 fn tokenize_test() {
-    let t1 = tokenize("+");
+    let t1 = tokenize("+").ok().unwrap();
     assert!(t1.unwrap().string.unwrap() == '+'.to_string());
-    let t2 = tokenize("+-");
+    let t2 = tokenize("+-").ok().unwrap();
     assert!(t2.unwrap().string.unwrap() == '+'.to_string());
-    let t3 = tokenize("1+2").unwrap().next.unwrap().next;
+    let t3 = tokenize("1+2").ok().unwrap().unwrap().next.unwrap().next;
     assert!(t3.unwrap().val.unwrap() == 2);
-    let t4 = tokenize("34+5");
+    let t4 = tokenize("34+5").ok().unwrap();
     assert!(t4.unwrap().val.unwrap() == 34);
-    let t5 = tokenize("67 - 8").unwrap().next.unwrap().next;
+    let t5 = tokenize("67 - 8").ok().unwrap().unwrap().next.unwrap().next;
     assert!(t5.unwrap().val.unwrap() == 8);
-    let t6 = tokenize("91 + 2").unwrap().next.unwrap().next.unwrap().next;
+    let t6 = tokenize("91 + 2")
+        .ok()
+        .unwrap()
+        .unwrap()
+        .next
+        .unwrap()
+        .next
+        .unwrap()
+        .next;
     assert!(t6.unwrap().kind == TokenKind::Eof);
 }
 
 #[test]
 fn expect_number_test() {
-    let t1 = tokenize("1");
+    let t1 = tokenize("1").ok().unwrap();
     assert!(expect_number(&t1) == Some(1));
-    let t2 = tokenize("32");
+    let t2 = tokenize("32").ok().unwrap();
     assert!(expect_number(&t2) == Some(32));
 }
 
@@ -154,42 +183,49 @@ fn main() -> Result<(), std::io::Error> {
     println!(".global main");
     println!("main:");
 
-    let mut token = tokenize(&arg1);
-    if let Some(v) = expect_number(&token) {
-        println!("  mov rax, {}", v);
-        token = next_token(token);
-    } else {
-        return error("Unexpected char");
-    }
+    match tokenize(&arg1) {
+        Ok(mut token) => {
+            if let Some(v) = expect_number(&token) {
+                println!("  mov rax, {}", v);
+                token = next_token(token);
+            } else {
+                return error("Unexpected char");
+            }
 
-    loop {
-        match &token {
-            Some(t) => match t.kind {
-                TokenKind::Eof => break,
-                TokenKind::Reserved => {
-                    if let Some(op) = &t.string {
-                        match op.as_str() {
-                            "+" => {
-                                token = next_token(token);
-                                let v = expect_number(&token);
-                                println!("  add rax, {}", v.unwrap());
-                                token = next_token(token);
+            loop {
+                match &token {
+                    Some(t) => match t.kind {
+                        TokenKind::Eof => break,
+                        TokenKind::Reserved => {
+                            if let Some(op) = &t.string {
+                                match op.as_str() {
+                                    "+" => {
+                                        token = next_token(token);
+                                        let v = expect_number(&token);
+                                        println!("  add rax, {}", v.unwrap());
+                                        token = next_token(token);
+                                    }
+                                    "-" => {
+                                        token = next_token(token);
+                                        let v = expect_number(&token);
+                                        println!("  sub rax, {}", v.unwrap());
+                                        token = next_token(token);
+                                    }
+                                    _ => return error("Unexpected char"),
+                                }
                             }
-                            "-" => {
-                                token = next_token(token);
-                                let v = expect_number(&token);
-                                println!("  sub rax, {}", v.unwrap());
-                                token = next_token(token);
-                            }
-                            _ => return error("Unexpected char"),
                         }
-                    }
+                        _ => return error("Unexpected char"),
+                    },
+                    _ => break,
                 }
-                _ => return error("Unexpected char"),
-            },
-            _ => break,
+            }
+        }
+        Err(err) => {
+            return error(&err.build_error_message(&arg1));
         }
     }
+
     println!("  ret");
     Ok(())
 }
