@@ -12,26 +12,37 @@ pub struct Token {
     pub next: Option<Box<Token>>,
     pub val: Option<i64>,
     pub string: Option<String>,
+    pub len: usize,
 }
 
 impl Token {
     fn new(kind: TokenKind, string: Option<String>) -> Token {
+        let len = if string.is_some() {
+            string.clone().unwrap().len()
+        } else {
+            0
+        };
         Token {
             kind: kind,
             next: None,
             val: None,
             string: string,
+            len: len,
         }
     }
 }
 
 #[derive(PartialEq)]
 enum NodeKind {
-    Add, // +
-    Sub, // -
-    Mul, // *
-    Div, // /
-    Num, // Integer
+    Add,           // +
+    Sub,           // -
+    Mul,           // *
+    Div,           // /
+    Equal,         // ==
+    NotEqual,      // !=
+    LessThan,      // <
+    LessThanEqual, // <=
+    Num,           // Integer
 }
 
 struct Node {
@@ -62,11 +73,45 @@ impl Node {
 }
 
 fn expr(token: &mut Option<Box<Token>>) -> Box<Node> {
+    equality(token)
+}
+
+fn equality(token: &mut Option<Box<Token>>) -> Box<Node> {
+    let mut node = relational(token);
+    loop {
+        if consume("==", token) {
+            node = Box::new(Node::new_node(NodeKind::Equal, node, relational(token)))
+        } else if consume("!=", token) {
+            node = Box::new(Node::new_node(NodeKind::NotEqual, node, relational(token)))
+        } else {
+            return node;
+        }
+    }
+}
+
+fn relational(token: &mut Option<Box<Token>>) -> Box<Node> {
+    let mut node = add(token);
+    loop {
+        if consume("<=", token) {
+            node = Box::new(Node::new_node(NodeKind::LessThanEqual, node, add(token)))
+        } else if consume(">=", token) {
+            node = Box::new(Node::new_node(NodeKind::LessThanEqual, add(token), node))
+        } else if consume("<", token) {
+            node = Box::new(Node::new_node(NodeKind::LessThan, node, add(token)))
+        } else if consume(">", token) {
+            node = Box::new(Node::new_node(NodeKind::LessThan, add(token), node))
+        } else {
+            return node;
+        }
+    }
+}
+
+fn add(token: &mut Option<Box<Token>>) -> Box<Node> {
     let mut node = mul(token);
     loop {
-        if consume('+', token) {
+        if consume("+", token) {
             node = Box::new(Node::new_node(NodeKind::Add, node, mul(token)))
-        } else if consume('-', token) {
+        } else if consume("-", token) {
             node = Box::new(Node::new_node(NodeKind::Sub, node, mul(token)))
         } else {
             return node;
@@ -77,9 +122,9 @@ fn expr(token: &mut Option<Box<Token>>) -> Box<Node> {
 fn mul(token: &mut Option<Box<Token>>) -> Box<Node> {
     let mut node = unary(token);
     loop {
-        if consume('*', token) {
+        if consume("*", token) {
             node = Box::new(Node::new_node(NodeKind::Mul, node, unary(token)))
-        } else if consume('/', token) {
+        } else if consume("/", token) {
             node = Box::new(Node::new_node(NodeKind::Div, node, unary(token)))
         } else {
             return node;
@@ -88,9 +133,9 @@ fn mul(token: &mut Option<Box<Token>>) -> Box<Node> {
 }
 
 fn unary(token: &mut Option<Box<Token>>) -> Box<Node> {
-    if consume('+', token) {
+    if consume("+", token) {
         primary(token)
-    } else if consume('-', token) {
+    } else if consume("-", token) {
         Box::new(Node::new_node(
             NodeKind::Sub,
             Box::new(Node::new_node_num(0)),
@@ -102,9 +147,9 @@ fn unary(token: &mut Option<Box<Token>>) -> Box<Node> {
 }
 
 fn primary(token: &mut Option<Box<Token>>) -> Box<Node> {
-    if consume('(', token) {
+    if consume("(", token) {
         let node = expr(token);
-        expect(')', token);
+        expect(")", token);
         return node;
     }
     Box::new(Node::new_node_num(expect_number(token).unwrap()))
@@ -129,6 +174,26 @@ fn gen(node: &mut Option<Box<Node>>) {
             NodeKind::Div => {
                 println!("  cqo\n");
                 println!("  idiv rdi\n");
+            }
+            NodeKind::Equal => {
+                println!("  cmp rax, rdi\n");
+                println!("  sete al\n");
+                println!("  movzb rax, al\n");
+            }
+            NodeKind::NotEqual => {
+                println!("  cmp rax, rdi\n");
+                println!("  setne al\n");
+                println!("  movzb rax, al\n");
+            }
+            NodeKind::LessThan => {
+                println!("  cmp rax, rdi\n");
+                println!("  setl al\n");
+                println!("  movzb rax, al\n");
+            }
+            NodeKind::LessThanEqual => {
+                println!("  cmp rax, rdi\n");
+                println!("  setle al\n");
+                println!("  movzb rax, al\n");
             }
             _ => panic!("Unexpected Node"),
         }
@@ -157,12 +222,21 @@ impl RError {
     }
 }
 
+fn is_next(op: char, mut iter: std::iter::Enumerate<std::str::Chars>) -> bool {
+    if let Some((_, c)) = iter.next() {
+        c == op
+    } else {
+        false
+    }
+}
+
 fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
     let mut head = Some(Box::new(Token {
         kind: TokenKind::Reserved,
         next: None,
         val: None,
         string: None,
+        len: 0,
     }));
     let mut current = &mut head;
     let mut iter = input.chars().enumerate();
@@ -171,7 +245,14 @@ fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
         match iter.next() {
             Some((i, c)) => match c {
                 c if c.is_whitespace() => continue,
-                '+' | '-' | '*' | '/' | '(' | ')' => {
+                '<' | '>' | '=' | '!' if is_next('=', iter.clone()) => {
+                    let mut s = c.to_string();
+                    s.push(iter.next().unwrap().1);
+                    let new_token = Token::new(TokenKind::Reserved, Some(s));
+                    current = assign_next_and_replace(current, new_token);
+                    is_prev_digit = false;
+                }
+                '+' | '-' | '*' | '/' | '(' | ')' | '<' | '>' => {
                     let new_token = Token::new(TokenKind::Reserved, Some(c.to_string()));
                     current = assign_next_and_replace(current, new_token);
                     is_prev_digit = false;
@@ -246,6 +327,12 @@ fn tokenize_test() {
     assert!(t6.unwrap().kind == TokenKind::Eof);
     let t7 = tokenize("1*(2 + 3)/(4-2)").ok().unwrap();
     assert_eq!(t7.unwrap().val, Some(1));
+    let t8 = tokenize("1 >= 2").ok().unwrap().unwrap().next;
+    assert_eq!(t8.unwrap().string, Some(">=".to_string()));
+    let t9 = tokenize("1 != 2").ok().unwrap().unwrap().next;
+    assert_eq!(t9.unwrap().string, Some("!=".to_string()));
+    let t10 = tokenize("1 < 2").ok().unwrap().unwrap().next;
+    assert_eq!(t10.unwrap().string, Some("<".to_string()));
 }
 
 #[test]
@@ -259,9 +346,9 @@ fn expect_number_test() {
 #[test]
 fn consume_test() {
     let t1 = &mut tokenize("+").ok().unwrap();
-    assert!(consume('+', t1));
+    assert!(consume("+", t1));
     let t2 = &mut tokenize("-").ok().unwrap();
-    assert!(consume('-', t2));
+    assert!(consume("-", t2));
 }
 
 fn parse_arguments() -> Result<String, std::io::Error> {
@@ -281,7 +368,7 @@ fn error(s: &str) -> Result<(), std::io::Error> {
     Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, s))
 }
 
-fn consume(op: char, token: &mut Option<Box<Token>>) -> bool {
+fn consume(op: &str, token: &mut Option<Box<Token>>) -> bool {
     if is_expected(op, token) {
         next_token(token);
         return true;
@@ -289,7 +376,7 @@ fn consume(op: char, token: &mut Option<Box<Token>>) -> bool {
     false
 }
 
-fn expect(op: char, token: &mut Option<Box<Token>>) {
+fn expect(op: &str, token: &mut Option<Box<Token>>) {
     if is_expected(op, token) {
         next_token(token);
     } else {
@@ -297,16 +384,17 @@ fn expect(op: char, token: &mut Option<Box<Token>>) {
     }
 }
 
-fn is_expected(op: char, token: &mut Option<Box<Token>>) -> bool {
+fn is_expected(op: &str, token: &mut Option<Box<Token>>) -> bool {
     if let Some(t) = token {
         if t.kind != TokenKind::Reserved {
             return false;
         }
         if let Some(s) = &t.string {
-            if let Some(c) = s.chars().next() {
-                if c != op {
-                    return false;
-                }
+            if s.len() != t.len {
+                return false;
+            }
+            if s != op {
+                return false;
             }
         }
     }

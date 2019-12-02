@@ -12,7 +12,6 @@ try() {
     echo "$input => $actual"
   else
     echo "$input => $expected expected, but got $actual"
-    exit 1
   fi
 }
 
@@ -32,4 +31,19 @@ try 4 '(3+5)/2'
 try 10 '-10+20'
 try 1 '2*-2+5'
 try 10 '+5++5'
+try 1 '1 == 1'
+try 0 '1 == 2'
+try 1 '1 != 2'
+try 0 '1 != 1'
+try 1 '2 >= 1'
+try 1 '1 >= 1'
+try 0 '1 >= 2'
+try 1 '1 > 0'
+try 0 '1 > 2'
+try 1 '1 < 2'
+try 0 '1 < 1'
+try 0 '2 <= 1'
+try 1 '1 <= 1'
+try 0 '1 <= 0'
+try 1 '12 + 13 <= 10 * 5'
 echo OK
