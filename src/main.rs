@@ -75,15 +75,29 @@ fn expr(token: &mut Option<Box<Token>>) -> Box<Node> {
 }
 
 fn mul(token: &mut Option<Box<Token>>) -> Box<Node> {
-    let mut node = primary(token);
+    let mut node = unary(token);
     loop {
         if consume('*', token) {
-            node = Box::new(Node::new_node(NodeKind::Mul, node, primary(token)))
+            node = Box::new(Node::new_node(NodeKind::Mul, node, unary(token)))
         } else if consume('/', token) {
-            node = Box::new(Node::new_node(NodeKind::Div, node, primary(token)))
+            node = Box::new(Node::new_node(NodeKind::Div, node, unary(token)))
         } else {
             return node;
         }
+    }
+}
+
+fn unary(token: &mut Option<Box<Token>>) -> Box<Node> {
+    if consume('+', token) {
+        primary(token)
+    } else if consume('-', token) {
+        Box::new(Node::new_node(
+            NodeKind::Sub,
+            Box::new(Node::new_node_num(0)),
+            primary(token),
+        ))
+    } else {
+        primary(token)
     }
 }
 
