@@ -25,6 +25,103 @@ impl Token {
     }
 }
 
+#[derive(PartialEq)]
+enum NodeKind {
+    Add, // +
+    Sub, // -
+    Mul, // *
+    Div, // /
+    Num, // Integer
+}
+
+struct Node {
+    kind: NodeKind,
+    lhs: Option<Box<Node>>,
+    rhs: Option<Box<Node>>,
+    val: Option<i64>,
+}
+
+impl Node {
+    fn new_node(kind: NodeKind, lhs: Box<Node>, rhs: Box<Node>) -> Node {
+        Node {
+            kind: kind,
+            lhs: Some(lhs),
+            rhs: Some(rhs),
+            val: None,
+        }
+    }
+
+    fn new_node_num(val: i64) -> Node {
+        Node {
+            kind: NodeKind::Num,
+            lhs: None,
+            rhs: None,
+            val: Some(val),
+        }
+    }
+}
+
+fn expr(token: &mut Option<Box<Token>>) -> Box<Node> {
+    let mut node = mul(token);
+    loop {
+        if consume('+', token) {
+            node = Box::new(Node::new_node(NodeKind::Add, node, mul(token)))
+        } else if consume('-', token) {
+            node = Box::new(Node::new_node(NodeKind::Sub, node, mul(token)))
+        } else {
+            return node;
+        }
+    }
+}
+
+fn mul(token: &mut Option<Box<Token>>) -> Box<Node> {
+    let mut node = primary(token);
+    loop {
+        if consume('*', token) {
+            node = Box::new(Node::new_node(NodeKind::Mul, node, primary(token)))
+        } else if consume('/', token) {
+            node = Box::new(Node::new_node(NodeKind::Div, node, primary(token)))
+        } else {
+            return node;
+        }
+    }
+}
+
+fn primary(token: &mut Option<Box<Token>>) -> Box<Node> {
+    if consume('(', token) {
+        let node = expr(token);
+        expect(')', token);
+        return node;
+    }
+    Box::new(Node::new_node_num(expect_number(token).unwrap()))
+}
+
+fn gen(node: &mut Option<Box<Node>>) {
+    if let Some(n) = node {
+        if n.kind == NodeKind::Num {
+            println!("  push {}\n", n.val.unwrap());
+            return;
+        }
+
+        gen(&mut n.lhs);
+        gen(&mut n.rhs);
+
+        println!("  pop rdi\n");
+        println!("  pop rax\n");
+        match n.kind {
+            NodeKind::Add => println!("  add rax, rdi\n"),
+            NodeKind::Sub => println!("  sub rax, rdi\n"),
+            NodeKind::Mul => println!("  imul rax, rdi\n"),
+            NodeKind::Div => {
+                println!("  cqo\n");
+                println!("  idiv rdi\n");
+            }
+            _ => panic!("Unexpected Node"),
+        }
+        println!("  push rax\n");
+    }
+}
+
 enum RError {
     Nothing,
     Tokenize(usize, String),
@@ -60,7 +157,7 @@ fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
         match iter.next() {
             Some((i, c)) => match c {
                 c if c.is_whitespace() => continue,
-                '+' | '-' => {
+                '+' | '-' | '*' | '/' | '(' | ')' => {
                     let new_token = Token::new(TokenKind::Reserved, Some(c.to_string()));
                     current = assign_next_and_replace(current, new_token);
                     is_prev_digit = false;
@@ -133,6 +230,8 @@ fn tokenize_test() {
         .unwrap()
         .next;
     assert!(t6.unwrap().kind == TokenKind::Eof);
+    let t7 = tokenize("1*(2 + 3)/(4-2)").ok().unwrap();
+    assert_eq!(t7.unwrap().val, Some(1));
 }
 
 #[test]
@@ -169,6 +268,22 @@ fn error(s: &str) -> Result<(), std::io::Error> {
 }
 
 fn consume(op: char, token: &mut Option<Box<Token>>) -> bool {
+    if is_expected(op, token) {
+        next_token(token);
+        return true;
+    }
+    false
+}
+
+fn expect(op: char, token: &mut Option<Box<Token>>) {
+    if is_expected(op, token) {
+        next_token(token);
+    } else {
+        panic!("Unexpected char");
+    }
+}
+
+fn is_expected(op: char, token: &mut Option<Box<Token>>) -> bool {
     if let Some(t) = token {
         if t.kind != TokenKind::Reserved {
             return false;
@@ -181,7 +296,6 @@ fn consume(op: char, token: &mut Option<Box<Token>>) -> bool {
             }
         }
     }
-    next_token(token);
     true
 }
 
@@ -210,46 +324,22 @@ fn next_token(token: &mut Option<Box<Token>>) {
 fn main() -> Result<(), std::io::Error> {
     let arg1 = parse_arguments()?;
 
-    println!(".intel_syntax noprefix");
-    println!(".global main");
-    println!("main:");
-
     match tokenize(&arg1) {
         Ok(mut token) => {
-            if let Some(v) = expect_number(&mut token) {
-                println!("  mov rax, {}", v);
-            } else {
-                return error("Unexpected char");
-            }
+            let node = expr(&mut token);
 
-            loop {
-                match &token {
-                    Some(t) => match t.kind {
-                        TokenKind::Eof => break,
-                        TokenKind::Reserved => {
-                            if consume('+', &mut token) {
-                                let v = expect_number(&mut token);
-                                println!("  add rax, {}", v.unwrap());
-                                continue;
-                            }
-                            if consume('-', &mut token) {
-                                let v = expect_number(&mut token);
-                                println!("  sub rax, {}", v.unwrap());
-                                continue;
-                            }
-                            return error("Unexpected char");
-                        }
-                        _ => return error("Unexpected char"),
-                    },
-                    _ => break,
-                }
-            }
+            println!(".intel_syntax noprefix");
+            println!(".global main");
+            println!("main:");
+
+            gen(&mut Some(node));
+
+            println!("  pop rax\n");
+            println!("  ret");
         }
         Err(err) => {
             return error(&err.build_error_message(&arg1));
         }
     }
-
-    println!("  ret");
     Ok(())
 }
