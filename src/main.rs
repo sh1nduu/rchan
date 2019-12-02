@@ -144,11 +144,11 @@ fn expect_number_test() {
 }
 
 #[test]
-fn is_expected_test() {
+fn consume_test() {
     let t1 = &mut tokenize("+").ok().unwrap();
-    assert!(is_expected('+', t1));
+    assert!(consume('+', t1));
     let t2 = &mut tokenize("-").ok().unwrap();
-    assert!(is_expected('-', t2));
+    assert!(consume('-', t2));
 }
 
 fn parse_arguments() -> Result<String, std::io::Error> {
@@ -168,7 +168,7 @@ fn error(s: &str) -> Result<(), std::io::Error> {
     Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, s))
 }
 
-fn is_expected(op: char, token: &mut Option<Box<Token>>) -> bool {
+fn consume(op: char, token: &mut Option<Box<Token>>) -> bool {
     if let Some(t) = token {
         if t.kind != TokenKind::Reserved {
             return false;
@@ -181,12 +181,15 @@ fn is_expected(op: char, token: &mut Option<Box<Token>>) -> bool {
             }
         }
     }
+    next_token(token);
     true
 }
 
-fn expect_number(token: &Option<Box<Token>>) -> Option<i64> {
+fn expect_number(token: &mut Option<Box<Token>>) -> Option<i64> {
     if let Some(t) = token {
-        t.val
+        let ret = t.val;
+        next_token(token);
+        ret
     } else {
         None
     }
@@ -194,10 +197,10 @@ fn expect_number(token: &Option<Box<Token>>) -> Option<i64> {
 
 fn next_token(token: &mut Option<Box<Token>>) {
     unsafe {
-    if let Some(t) = token {
+        if let Some(t) = token {
             let next = &mut t.next as *mut Option<Box<Token>>;
             std::ptr::swap(token, next);
-    } else {
+        } else {
             let next = &mut None as *mut Option<Box<Token>>;
             std::ptr::swap(token, next);
         }
@@ -213,9 +216,8 @@ fn main() -> Result<(), std::io::Error> {
 
     match tokenize(&arg1) {
         Ok(mut token) => {
-            if let Some(v) = expect_number(&token) {
+            if let Some(v) = expect_number(&mut token) {
                 println!("  mov rax, {}", v);
-                next_token(&mut token);
             } else {
                 return error("Unexpected char");
             }
@@ -225,18 +227,14 @@ fn main() -> Result<(), std::io::Error> {
                     Some(t) => match t.kind {
                         TokenKind::Eof => break,
                         TokenKind::Reserved => {
-                            if is_expected('+', &mut token) {
-                                next_token(&mut token);
-                                        let v = expect_number(&token);
-                                        println!("  add rax, {}", v.unwrap());
-                                next_token(&mut token);
+                            if consume('+', &mut token) {
+                                let v = expect_number(&mut token);
+                                println!("  add rax, {}", v.unwrap());
                                 continue;
-                                    }
-                            if is_expected('-', &mut token) {
-                                next_token(&mut token);
-                                        let v = expect_number(&token);
-                                        println!("  sub rax, {}", v.unwrap());
-                                next_token(&mut token);
+                            }
+                            if consume('-', &mut token) {
+                                let v = expect_number(&mut token);
+                                println!("  sub rax, {}", v.unwrap());
                                 continue;
                             }
                             return error("Unexpected char");
