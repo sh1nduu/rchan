@@ -27,16 +27,24 @@ fn main() -> Result<(), std::io::Error> {
 
     match tokenize(&arg1) {
         Ok(mut token) => {
-            let node = expr(&mut token);
+            let code = program(&mut token);
 
-            println!(".intel_syntax noprefix");
-            println!(".global main");
-            println!("main:");
+            print!(".intel_syntax noprefix\n");
+            print!(".global main\n");
+            print!("main:\n");
 
-            gen(&mut Some(node));
+            print!("  push rbp\n");
+            print!("  mov rbp, rsp\n");
+            print!("  sub rsp, 208\n");
 
-            println!("  pop rax\n");
-            println!("  ret");
+            for node in code {
+                gen(&mut Some(node));
+                print!("  pop rax\n");
+            }
+
+            print!("  mov rsp, rbp\n");
+            print!("  pop rbp\n");
+            print!("  ret\n");
         }
         Err(err) => {
             return error(&err.build_error_message(&arg1));

@@ -1,34 +1,4 @@
-#[derive(PartialEq)]
-pub enum TokenKind {
-    Reserved,
-    Num,
-    Eof,
-}
-
-pub struct Token {
-    pub kind: TokenKind,
-    pub next: Option<Box<Token>>,
-    pub val: Option<i64>,
-    pub string: Option<String>,
-    pub len: usize,
-}
-
-impl Token {
-    pub fn new(kind: TokenKind, string: Option<String>) -> Token {
-        let len = if string.is_some() {
-            string.clone().unwrap().len()
-        } else {
-            0
-        };
-        Token {
-            kind: kind,
-            next: None,
-            val: None,
-            string: string,
-            len: len,
-        }
-    }
-}
+use super::tokenize::*;
 
 #[derive(PartialEq)]
 pub enum NodeKind {
@@ -40,6 +10,8 @@ pub enum NodeKind {
     NotEqual,      // !=
     LessThan,      // <
     LessThanEqual, // <=
+    Assign,        // =
+    LocalVariable, // local variable
     Num,           // Integer
 }
 
@@ -48,6 +20,7 @@ pub struct Node {
     pub lhs: Option<Box<Node>>,
     pub rhs: Option<Box<Node>>,
     pub val: Option<i64>,
+    pub offset: Option<i32>,
 }
 
 impl Node {
@@ -57,6 +30,7 @@ impl Node {
             lhs: Some(lhs),
             rhs: Some(rhs),
             val: None,
+            offset: None,
         }
     }
 
@@ -66,12 +40,55 @@ impl Node {
             lhs: None,
             rhs: None,
             val: Some(val),
+            offset: None,
+        }
+    }
+
+    pub fn new_node_identifier(label: char) -> Node {
+        let offset = (label as i32 - 'a' as i32) * 8;
+        Node {
+            kind: NodeKind::LocalVariable,
+            lhs: None,
+            rhs: None,
+            val: None,
+            offset: Some(offset),
         }
     }
 }
 
+pub fn program(token: &mut Option<Box<Token>>) -> Vec<Box<Node>> {
+    let mut code = Vec::new();
+    loop {
+        match token {
+            Some(t) => {
+                if t.kind != TokenKind::Eof {
+                    code.push(stmt(token));
+                } else {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+    code
+}
+
+pub fn stmt(token: &mut Option<Box<Token>>) -> Box<Node> {
+    let node = expr(token);
+    expect(";", token);
+    node
+}
+
 pub fn expr(token: &mut Option<Box<Token>>) -> Box<Node> {
-    equality(token)
+    assign(token)
+}
+
+pub fn assign(token: &mut Option<Box<Token>>) -> Box<Node> {
+    let mut node = equality(token);
+    if consume("=", token) {
+        node = Box::new(Node::new_node(NodeKind::Assign, node, assign(token)));
+    }
+    node
 }
 
 fn equality(token: &mut Option<Box<Token>>) -> Box<Node> {
@@ -150,7 +167,12 @@ fn primary(token: &mut Option<Box<Token>>) -> Box<Node> {
         expect(")", token);
         return node;
     }
-    Box::new(Node::new_node_num(expect_number(token).unwrap()))
+
+    if let Some(id) = consume_identifier(token) {
+        Box::new(Node::new_node_identifier(id))
+    } else {
+        Box::new(Node::new_node_num(expect_number(token).unwrap()))
+    }
 }
 
 fn consume(op: &str, token: &mut Option<Box<Token>>) -> bool {
@@ -159,6 +181,20 @@ fn consume(op: &str, token: &mut Option<Box<Token>>) -> bool {
         return true;
     }
     false
+}
+
+fn consume_identifier(token: &mut Option<Box<Token>>) -> Option<char> {
+    if let Some(t) = token {
+        if let Some(s) = &t.string {
+            if let Some(c) = s.chars().next() {
+                if c.is_ascii_lowercase() {
+                    next_token(token);
+                    return Some(c);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn expect(op: &str, token: &mut Option<Box<Token>>) {
@@ -227,5 +263,12 @@ mod tests {
         assert!(consume("+", t1));
         let t2 = &mut tokenize("-").ok().unwrap();
         assert!(consume("-", t2));
+    }
+    #[test]
+    fn consume_identifier_test() {
+        let t1 = &mut tokenize("a").ok().unwrap();
+        assert_eq!(consume_identifier(t1), Some('a'));
+        let t2 = &mut tokenize("8").ok().unwrap();
+        assert_eq!(consume_identifier(t2), None);
     }
 }

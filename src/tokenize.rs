@@ -1,5 +1,37 @@
 use super::error::*;
-use super::parse::*;
+
+#[derive(PartialEq)]
+pub enum TokenKind {
+    Reserved,
+    Identifier,
+    Num,
+    Eof,
+}
+
+pub struct Token {
+    pub kind: TokenKind,
+    pub next: Option<Box<Token>>,
+    pub val: Option<i64>,
+    pub string: Option<String>,
+    pub len: usize,
+}
+
+impl Token {
+    pub fn new(kind: TokenKind, string: Option<String>) -> Token {
+        let len = if string.is_some() {
+            string.clone().unwrap().len()
+        } else {
+            0
+        };
+        Token {
+            kind: kind,
+            next: None,
+            val: None,
+            string: string,
+            len: len,
+        }
+    }
+}
 
 pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
     let mut head = Some(Box::new(Token {
@@ -23,7 +55,7 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
                     current = assign_next_and_replace(current, new_token);
                     is_prev_digit = false;
                 }
-                '+' | '-' | '*' | '/' | '(' | ')' | '<' | '>' => {
+                '+' | '-' | '*' | '/' | '(' | ')' | '<' | '>' | '=' | ';' => {
                     let new_token = Token::new(TokenKind::Reserved, Some(c.to_string()));
                     current = assign_next_and_replace(current, new_token);
                     is_prev_digit = false;
@@ -40,6 +72,11 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
                             cur.val = cur.val.map(|a| a * 10 + x);
                         }
                     }
+                }
+                c if c.is_ascii_lowercase() => {
+                    let new_token = Token::new(TokenKind::Identifier, Some(c.to_string()));
+                    current = assign_next_and_replace(current, new_token);
+                    is_prev_digit = false;
                 }
                 _ => return Err(RError::Tokenize(i, "Invalid character".to_string())),
             },
@@ -111,4 +148,10 @@ fn tokenize_test() {
     assert_eq!(t9.unwrap().string, Some("!=".to_string()));
     let t10 = tokenize("1 < 2").ok().unwrap().unwrap().next;
     assert_eq!(t10.unwrap().string, Some("<".to_string()));
+    let t11 = tokenize("a + 1").ok().unwrap();
+    assert_eq!(t11.unwrap().string, Some("a".to_string()));
+    let t12 = tokenize("a = 1;").ok().unwrap().unwrap().next;
+    assert_eq!(t12.unwrap().string, Some("=".to_string()));
+    let t13 = tokenize("21;38").ok().unwrap().unwrap().next;
+    assert_eq!(t13.unwrap().string, Some(";".to_string()));
 }
