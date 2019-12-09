@@ -27,7 +27,8 @@ fn main() -> Result<(), std::io::Error> {
 
     match tokenize(&arg1) {
         Ok(mut token) => {
-            let code = program(&mut token);
+            let mut parser = Parser::new(&mut token);
+            let code = parser.program();
 
             print!(".intel_syntax noprefix\n");
             print!(".global main\n");

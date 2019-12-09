@@ -44,8 +44,7 @@ impl Node {
         }
     }
 
-    pub fn new_node_identifier(label: char) -> Node {
-        let offset = (label as i32 - 'a' as i32) * 8;
+    pub fn new_node_identifier(offset: i32) -> Node {
         Node {
             kind: NodeKind::LocalVariable,
             lhs: None,
@@ -56,122 +55,193 @@ impl Node {
     }
 }
 
-pub fn program(token: &mut Option<Box<Token>>) -> Vec<Box<Node>> {
-    let mut code = Vec::new();
-    loop {
-        match token {
-            Some(t) => {
-                if t.kind != TokenKind::Eof {
-                    code.push(stmt(token));
-                } else {
-                    break;
+#[derive(Debug, PartialEq)]
+struct LocalVariable {
+    name: String,
+    offset: i32,
+}
+
+impl LocalVariable {
+    fn new(token: &mut Option<Box<Token>>, offset: i32) -> Option<Self> {
+        if let Some(t) = token {
+            if let Some(s) = &t.string {
+                return Some(LocalVariable {
+                    name: s.clone(),
+                    offset: offset,
+                });
+            }
+        }
+        None
+    }
+}
+
+struct LocalVariables {
+    list: Vec<LocalVariable>,
+    offset: i32,
+}
+
+impl LocalVariables {
+    fn new() -> Self {
+        Self {
+            list: Vec::new(),
+            offset: 0,
+        }
+    }
+    fn find(&self, token: &mut Option<Box<Token>>) -> Option<&LocalVariable> {
+        if let Some(t) = token {
+            if let Some(s) = &t.string {
+                for lvar in &self.list {
+                    if &lvar.name == s {
+                        return Some(lvar);
+                    }
                 }
             }
-            _ => break,
+        }
+        None
+    }
+}
+
+pub struct Parser<'a> {
+    pub token: &'a mut Option<Box<Token>>,
+    lvars: LocalVariables,
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(token: &'a mut Option<Box<Token>>) -> Self {
+        let lvars = LocalVariables::new();
+        Self {
+            token: token,
+            lvars: lvars,
         }
     }
-    code
-}
 
-pub fn stmt(token: &mut Option<Box<Token>>) -> Box<Node> {
-    let node = expr(token);
-    expect(";", token);
-    node
-}
-
-pub fn expr(token: &mut Option<Box<Token>>) -> Box<Node> {
-    assign(token)
-}
-
-pub fn assign(token: &mut Option<Box<Token>>) -> Box<Node> {
-    let mut node = equality(token);
-    if consume("=", token) {
-        node = Box::new(Node::new_node(NodeKind::Assign, node, assign(token)));
+    pub fn program(&mut self) -> Vec<Box<Node>> {
+        let mut code = Vec::new();
+        loop {
+            match self.token {
+                Some(t) => {
+                    if t.kind != TokenKind::Eof {
+                        code.push(self.stmt());
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        code
     }
-    node
-}
 
-fn equality(token: &mut Option<Box<Token>>) -> Box<Node> {
-    let mut node = relational(token);
-    loop {
-        if consume("==", token) {
-            node = Box::new(Node::new_node(NodeKind::Equal, node, relational(token)))
-        } else if consume("!=", token) {
-            node = Box::new(Node::new_node(NodeKind::NotEqual, node, relational(token)))
+    fn stmt(&mut self) -> Box<Node> {
+        let node = self.expr();
+        expect(";", &mut self.token);
+        node
+    }
+
+    fn expr(&mut self) -> Box<Node> {
+        self.assign()
+    }
+
+    fn assign(&mut self) -> Box<Node> {
+        let mut node = self.equality();
+        if consume("=", &mut &mut self.token) {
+            node = Box::new(Node::new_node(NodeKind::Assign, node, self.assign()));
+        }
+        node
+    }
+
+    fn equality(&mut self) -> Box<Node> {
+        let mut node = self.relational();
+        loop {
+            if consume("==", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::Equal, node, self.relational()))
+            } else if consume("!=", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::NotEqual, node, self.relational()))
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn relational(&mut self) -> Box<Node> {
+        let mut node = self.add();
+        loop {
+            if consume("<=", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::LessThanEqual, node, self.add()))
+            } else if consume(">=", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::LessThanEqual, self.add(), node))
+            } else if consume("<", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::LessThan, node, self.add()))
+            } else if consume(">", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::LessThan, self.add(), node))
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn add(&mut self) -> Box<Node> {
+        let mut node = self.mul();
+        loop {
+            if consume("+", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::Add, node, self.mul()))
+            } else if consume("-", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::Sub, node, self.mul()))
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn mul(&mut self) -> Box<Node> {
+        let mut node = self.unary();
+        loop {
+            if consume("*", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::Mul, node, self.unary()))
+            } else if consume("/", &mut self.token) {
+                node = Box::new(Node::new_node(NodeKind::Div, node, self.unary()))
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn unary(&mut self) -> Box<Node> {
+        if consume("+", &mut self.token) {
+            self.primary()
+        } else if consume("-", &mut self.token) {
+            Box::new(Node::new_node(
+                NodeKind::Sub,
+                Box::new(Node::new_node_num(0)),
+                self.primary(),
+            ))
         } else {
+            self.primary()
+        }
+    }
+
+    fn primary(&mut self) -> Box<Node> {
+        if consume("(", &mut self.token) {
+            let node = self.expr();
+            expect(")", &mut self.token);
             return node;
         }
-    }
-}
 
-fn relational(token: &mut Option<Box<Token>>) -> Box<Node> {
-    let mut node = add(token);
-    loop {
-        if consume("<=", token) {
-            node = Box::new(Node::new_node(NodeKind::LessThanEqual, node, add(token)))
-        } else if consume(">=", token) {
-            node = Box::new(Node::new_node(NodeKind::LessThanEqual, add(token), node))
-        } else if consume("<", token) {
-            node = Box::new(Node::new_node(NodeKind::LessThan, node, add(token)))
-        } else if consume(">", token) {
-            node = Box::new(Node::new_node(NodeKind::LessThan, add(token), node))
+        if let Some(_) = get_identifier(&mut self.token) {
+            let offset = if let Some(lvar) = self.lvars.find(self.token) {
+                lvar.offset
+            } else {
+                let offset = self.lvars.offset + 8;
+                let lvar = LocalVariable::new(self.token, offset.clone()).unwrap();
+                self.lvars.offset = offset;
+                self.lvars.list.push(lvar);
+                offset
+            };
+            next_token(self.token);
+            Box::new(Node::new_node_identifier(offset))
         } else {
-            return node;
+            Box::new(Node::new_node_num(expect_number(&mut self.token).unwrap()))
         }
-    }
-}
-
-fn add(token: &mut Option<Box<Token>>) -> Box<Node> {
-    let mut node = mul(token);
-    loop {
-        if consume("+", token) {
-            node = Box::new(Node::new_node(NodeKind::Add, node, mul(token)))
-        } else if consume("-", token) {
-            node = Box::new(Node::new_node(NodeKind::Sub, node, mul(token)))
-        } else {
-            return node;
-        }
-    }
-}
-
-fn mul(token: &mut Option<Box<Token>>) -> Box<Node> {
-    let mut node = unary(token);
-    loop {
-        if consume("*", token) {
-            node = Box::new(Node::new_node(NodeKind::Mul, node, unary(token)))
-        } else if consume("/", token) {
-            node = Box::new(Node::new_node(NodeKind::Div, node, unary(token)))
-        } else {
-            return node;
-        }
-    }
-}
-
-fn unary(token: &mut Option<Box<Token>>) -> Box<Node> {
-    if consume("+", token) {
-        primary(token)
-    } else if consume("-", token) {
-        Box::new(Node::new_node(
-            NodeKind::Sub,
-            Box::new(Node::new_node_num(0)),
-            primary(token),
-        ))
-    } else {
-        primary(token)
-    }
-}
-
-fn primary(token: &mut Option<Box<Token>>) -> Box<Node> {
-    if consume("(", token) {
-        let node = expr(token);
-        expect(")", token);
-        return node;
-    }
-
-    if let Some(id) = consume_identifier(token) {
-        Box::new(Node::new_node_identifier(id))
-    } else {
-        Box::new(Node::new_node_num(expect_number(token).unwrap()))
     }
 }
 
@@ -183,14 +253,11 @@ fn consume(op: &str, token: &mut Option<Box<Token>>) -> bool {
     false
 }
 
-fn consume_identifier(token: &mut Option<Box<Token>>) -> Option<char> {
+fn get_identifier(token: &mut Option<Box<Token>>) -> Option<String> {
     if let Some(t) = token {
-        if let Some(s) = &t.string {
-            if let Some(c) = s.chars().next() {
-                if c.is_ascii_lowercase() {
-                    next_token(token);
-                    return Some(c);
-                }
+        if let Some(s) = t.string.clone() {
+            if s.chars().all(|x| x.is_ascii_lowercase()) {
+                return Some(s.to_string());
             }
         }
     }
@@ -265,10 +332,25 @@ mod tests {
         assert!(consume("-", t2));
     }
     #[test]
-    fn consume_identifier_test() {
+    fn get_identifier_test() {
         let t1 = &mut tokenize("a").ok().unwrap();
-        assert_eq!(consume_identifier(t1), Some('a'));
+        assert_eq!(get_identifier(t1), Some("a".to_string()));
         let t2 = &mut tokenize("8").ok().unwrap();
-        assert_eq!(consume_identifier(t2), None);
+        assert_eq!(get_identifier(t2), None);
+        let t3 = &mut tokenize("variable").ok().unwrap();
+        assert_eq!(get_identifier(t3), Some("variable".to_string()));
+    }
+
+    #[test]
+    fn local_variable_find_test() {
+        let t1 = &mut tokenize("a=1;b=2;").ok().unwrap();
+        let mut lvars = LocalVariables::new();
+        assert_eq!(lvars.find(t1), None);
+
+        lvars.list.push(LocalVariable {
+            name: "a".to_string(),
+            offset: 8,
+        });
+        assert!(lvars.find(t1).is_some());
     }
 }

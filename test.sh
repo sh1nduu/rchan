@@ -18,6 +18,9 @@ try() {
 }
 
 cargo build
+if [ "$?" = "101" ]; then
+  exit 1
+fi
 
 try 0 '0;'
 try 42 '42;'
@@ -48,6 +51,7 @@ try 0 '2 <= 1;'
 try 1 '1 <= 1;'
 try 0 '1 <= 0;'
 try 1 '12 + 13 <= 10 * 5;'
+try 1 'a=1; a;'
 try 1 'a=1; b=2; b-a;'
 try 16 'a=8; b=2; a*b;'
 try 65 'a=8; a=a*a; a+1;'

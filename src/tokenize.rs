@@ -33,6 +33,31 @@ impl Token {
     }
 }
 
+#[derive(PartialEq)]
+enum TokenizeMode {
+    Normal,
+    Num,
+    Variable,
+}
+
+impl TokenizeMode {
+    fn normal(&mut self) {
+        *self = TokenizeMode::Normal;
+    }
+    fn number(&mut self) {
+        *self = TokenizeMode::Num;
+    }
+    fn variable(&mut self) {
+        *self = TokenizeMode::Variable;
+    }
+    fn is_number(&self) -> bool {
+        self == &TokenizeMode::Num
+    }
+    fn is_variable(&self) -> bool {
+        self == &TokenizeMode::Variable
+    }
+}
+
 pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
     let mut head = Some(Box::new(Token {
         kind: TokenKind::Reserved,
@@ -43,7 +68,7 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
     }));
     let mut current = &mut head;
     let mut iter = input.chars().enumerate();
-    let mut is_prev_digit = false;
+    let mut mode = TokenizeMode::Normal;
     loop {
         match iter.next() {
             Some((i, c)) => match c {
@@ -53,30 +78,39 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
                     s.push(iter.next().unwrap().1);
                     let new_token = Token::new(TokenKind::Reserved, Some(s));
                     current = assign_next_and_replace(current, new_token);
-                    is_prev_digit = false;
+                    mode.normal();
                 }
                 '+' | '-' | '*' | '/' | '(' | ')' | '<' | '>' | '=' | ';' => {
                     let new_token = Token::new(TokenKind::Reserved, Some(c.to_string()));
                     current = assign_next_and_replace(current, new_token);
-                    is_prev_digit = false;
+                    mode.normal();
                 }
-                c if is_digit(c) && !is_prev_digit => {
+                c if is_digit(c) && !mode.is_number() => {
                     let mut new_token = Token::new(TokenKind::Num, Some(c.to_string()));
                     new_token.val = c.to_digit(10).map(|a| i64::from(a));
                     current = assign_next_and_replace(current, new_token);
-                    is_prev_digit = true;
+                    mode.number();
                 }
-                c if is_digit(c) && is_prev_digit => {
+                c if is_digit(c) && mode.is_number() => {
                     if let Some(x) = c.to_digit(10).map(|a| i64::from(a)) {
                         if let Some(cur) = current {
                             cur.val = cur.val.map(|a| a * 10 + x);
                         }
                     }
                 }
-                c if c.is_ascii_lowercase() => {
+                c if c.is_ascii_lowercase() && !mode.is_variable() => {
                     let new_token = Token::new(TokenKind::Identifier, Some(c.to_string()));
                     current = assign_next_and_replace(current, new_token);
-                    is_prev_digit = false;
+                    mode.variable();
+                }
+                c if c.is_ascii_lowercase() && mode.is_variable() => {
+                    if let Some(cur) = current {
+                        if let Some(mut s) = cur.string.clone() {
+                            s.push(c);
+                            cur.string = Some(s);
+                            cur.len += 1;
+                        }
+                    }
                 }
                 _ => return Err(RError::Tokenize(i, "Invalid character".to_string())),
             },
@@ -154,4 +188,8 @@ fn tokenize_test() {
     assert_eq!(t12.unwrap().string, Some("=".to_string()));
     let t13 = tokenize("21;38").ok().unwrap().unwrap().next;
     assert_eq!(t13.unwrap().string, Some(";".to_string()));
+    let t14 = tokenize("ab=38").ok().unwrap();
+    assert_eq!(t14.unwrap().string, Some("ab".to_string()));
+    let t15 = tokenize("ab-c").ok().unwrap();
+    assert_eq!(t15.unwrap().string, Some("ab".to_string()));
 }
