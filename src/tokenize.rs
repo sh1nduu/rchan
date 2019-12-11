@@ -1,10 +1,11 @@
 use super::error::*;
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum TokenKind {
     Reserved,
     Identifier,
     Num,
+    Return,
     Eof,
 }
 
@@ -67,15 +68,15 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
         len: 0,
     }));
     let mut current = &mut head;
-    let mut iter = input.chars().enumerate();
+    let mut reader = StringReader::new(input);
     let mut mode = TokenizeMode::Normal;
     loop {
-        match iter.next() {
-            Some((i, c)) => match c {
+        match reader.next() {
+            Some(c) => match c {
                 c if c.is_whitespace() => continue,
-                '<' | '>' | '=' | '!' if is_next('=', iter.clone()) => {
+                '<' | '>' | '=' | '!' if reader.next_is('=') => {
                     let mut s = c.to_string();
-                    s.push(iter.next().unwrap().1);
+                    s.push(reader.next().unwrap());
                     let new_token = Token::new(TokenKind::Reserved, Some(s));
                     current = assign_next_and_replace(current, new_token);
                     mode.normal();
@@ -112,7 +113,12 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
                         }
                     }
                 }
-                _ => return Err(RError::Tokenize(i, "Invalid character".to_string())),
+                _ => {
+                    return Err(RError::Tokenize(
+                        reader.index,
+                        "Invalid character".to_string(),
+                    ))
+                }
             },
             _ => break,
         }
@@ -150,6 +156,21 @@ fn assign_next_and_replace(
 
 fn is_digit(c: char) -> bool {
     c.to_digit(10).is_some()
+}
+
+fn get_alnum_length(iter: &mut std::iter::Enumerate<std::str::Chars>) -> String {
+    let mut s = "".to_string();
+    loop {
+        if let Some((_, c)) = iter.next() {
+            if c.is_ascii_alphanumeric() {
+                s.push(c);
+            } else {
+                return s;
+            }
+        } else {
+            return s;
+        }
+    }
 }
 
 #[test]
@@ -192,4 +213,75 @@ fn tokenize_test() {
     assert_eq!(t14.unwrap().string, Some("ab".to_string()));
     let t15 = tokenize("ab-c").ok().unwrap();
     assert_eq!(t15.unwrap().string, Some("ab".to_string()));
+    // let t16 = tokenize("return 0").ok().unwrap();
+    // assert_eq!(t16.unwrap().kind, TokenKind::Return);
+    // let t17 = tokenize("return_ = 0").ok().unwrap();
+    // assert_ne!(t17.unwrap().kind, TokenKind::Return);
+}
+
+struct StringReader {
+    input: String,
+    index: usize,
+    len: usize,
+}
+
+impl StringReader {
+    fn new<'a>(input: &'a str) -> Self {
+        StringReader {
+            input: input.to_string(),
+            index: 0,
+            len: input.len(),
+        }
+    }
+
+    fn next(&mut self) -> Option<char> {
+        if self.is_end() {
+            return None;
+        }
+
+        let ret = self.input.chars().nth(self.index);
+        self.index += 1;
+        ret
+    }
+
+    fn prev(&mut self) -> Option<char> {
+        if self.index == 0 {
+            return None;
+        }
+
+        self.index -= 1;
+        self.input.chars().nth(self.index)
+    }
+
+    fn next_is(&mut self, c: char) -> bool {
+        let mut ret = false;
+        if let Some(myc) = self.next() {
+            ret = myc == c;
+        }
+        if !self.is_end() {
+            self.prev();
+        }
+        ret
+    }
+
+    fn is_end(&self) -> bool {
+        self.index >= self.len
+    }
+}
+
+#[test]
+fn string_reader_test() {
+    let mut reader = StringReader::new("abc");
+    assert_eq!(reader.prev(), None);
+    assert_eq!(reader.next(), Some('a'));
+    assert!(reader.next_is('b'));
+    assert!(!reader.next_is('a'));
+    assert_eq!(reader.next(), Some('b'));
+    assert_eq!(reader.next(), Some('c'));
+    assert!(!reader.next_is('a'));
+    assert_eq!(reader.next(), None);
+    assert_eq!(reader.prev(), Some('c'));
+    assert_eq!(reader.prev(), Some('b'));
+    assert_eq!(reader.prev(), Some('a'));
+    assert_eq!(reader.prev(), None);
 }

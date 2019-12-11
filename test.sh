@@ -57,4 +57,7 @@ try 1 'a=1; b=2; b-a;'
 try 16 'a=8; b=2; a*b;'
 try 65 'a=8; a=a*a; a+1;'
 try 4 'abc=8; def=abc*2; def/4;'
+try 14 'a = 3;
+b = 5 * 6 - 8;
+a + b / 2;'
 echo OK
