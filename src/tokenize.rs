@@ -99,12 +99,23 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
                         }
                     }
                 }
-                c if c.is_ascii_lowercase() && !mode.is_variable() => {
+                c if is_variable_nameable(c) && !mode.is_variable() => {
+                    if reader.compare("return", Some(-1)) {
+                        if reader.offset_is_map(5, |c| !is_variable_nameable(c)) {
+                            println!("Next is map ok");
+                            let new_token =
+                                Token::new(TokenKind::Return, Some("return".to_string()));
+                            current = assign_next_and_replace(current, new_token);
+                            mode.normal();
+                            reader.foward(5);
+                            continue;
+                        }
+                    }
                     let new_token = Token::new(TokenKind::Identifier, Some(c.to_string()));
                     current = assign_next_and_replace(current, new_token);
                     mode.variable();
                 }
-                c if c.is_ascii_lowercase() && mode.is_variable() => {
+                c if is_variable_nameable(c) && mode.is_variable() => {
                     if let Some(cur) = current {
                         if let Some(mut s) = cur.string.clone() {
                             s.push(c);
@@ -131,13 +142,6 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
     }
 }
 
-fn is_next(op: char, mut iter: std::iter::Enumerate<std::str::Chars>) -> bool {
-    if let Some((_, c)) = iter.next() {
-        c == op
-    } else {
-        false
-    }
-}
 fn assign_next_and_replace(
     mut current: &mut Option<Box<Token>>,
     new_token: Token,
@@ -154,23 +158,12 @@ fn assign_next_and_replace(
     current
 }
 
-fn is_digit(c: char) -> bool {
-    c.to_digit(10).is_some()
+fn is_variable_nameable(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
 }
 
-fn get_alnum_length(iter: &mut std::iter::Enumerate<std::str::Chars>) -> String {
-    let mut s = "".to_string();
-    loop {
-        if let Some((_, c)) = iter.next() {
-            if c.is_ascii_alphanumeric() {
-                s.push(c);
-            } else {
-                return s;
-            }
-        } else {
-            return s;
-        }
-    }
+fn is_digit(c: char) -> bool {
+    c.to_digit(10).is_some()
 }
 
 #[test]
@@ -213,10 +206,12 @@ fn tokenize_test() {
     assert_eq!(t14.unwrap().string, Some("ab".to_string()));
     let t15 = tokenize("ab-c").ok().unwrap();
     assert_eq!(t15.unwrap().string, Some("ab".to_string()));
-    // let t16 = tokenize("return 0").ok().unwrap();
-    // assert_eq!(t16.unwrap().kind, TokenKind::Return);
-    // let t17 = tokenize("return_ = 0").ok().unwrap();
-    // assert_ne!(t17.unwrap().kind, TokenKind::Return);
+    let t16 = tokenize("return 0").ok().unwrap();
+    assert_eq!(t16.unwrap().kind, TokenKind::Return);
+    let t17 = tokenize("return_ = 0").ok().unwrap();
+    assert_ne!(t17.unwrap().kind, TokenKind::Return);
+    let t18 = tokenize("return 0; a").ok().unwrap().unwrap().next;
+    assert_eq!(t18.unwrap().string, Some("0".to_string()));
 }
 
 struct StringReader {
@@ -263,6 +258,48 @@ impl StringReader {
         }
         ret
     }
+    fn offset_is_map(&mut self, offset: usize, condition: fn(char) -> bool) -> bool {
+        let mut ret = false;
+        let current = self.index;
+        self.index += offset;
+        if let Some(c) = self.next() {
+            ret = condition(c);
+        }
+        if !self.is_end() {
+            self.prev();
+        }
+        self.index = current;
+        ret
+    }
+
+    fn compare<'a>(&mut self, s: &'a str, offset: Option<i32>) -> bool {
+        let s = s.to_string();
+        let c = self.take(s.len(), offset);
+        println!("{:?}", c);
+        s == c
+    }
+
+    fn take(&mut self, size: usize, offset: Option<i32>) -> String {
+        let mut ret = String::new();
+        let offset = offset.unwrap_or(0);
+        let current = self.index;
+        let mut index = self.index as i32;
+        index += offset;
+        self.index = index as usize;
+        for _ in 0..size {
+            if let Some(c) = self.next() {
+                ret.push(c);
+            } else {
+                break;
+            }
+        }
+        self.index = current;
+        ret
+    }
+
+    fn foward(&mut self, size: usize) {
+        self.index += size;
+    }
 
     fn is_end(&self) -> bool {
         self.index >= self.len
@@ -273,6 +310,8 @@ impl StringReader {
 fn string_reader_test() {
     let mut reader = StringReader::new("abc");
     assert_eq!(reader.prev(), None);
+    assert!(reader.compare("abc", None));
+    assert!(reader.offset_is_map(1, |c| c == 'b'));
     assert_eq!(reader.next(), Some('a'));
     assert!(reader.next_is('b'));
     assert!(!reader.next_is('a'));
