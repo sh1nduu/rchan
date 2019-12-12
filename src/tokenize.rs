@@ -9,6 +9,7 @@ pub enum TokenKind {
     Eof,
 }
 
+#[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
     pub next: Option<Box<Token>>,
@@ -102,7 +103,6 @@ pub fn tokenize<'a>(input: &'a str) -> Result<Option<Box<Token>>, RError> {
                 c if is_variable_nameable(c) && !mode.is_variable() => {
                     if reader.compare("return", Some(-1)) {
                         if reader.offset_is_map(5, |c| !is_variable_nameable(c)) {
-                            println!("Next is map ok");
                             let new_token =
                                 Token::new(TokenKind::Return, Some("return".to_string()));
                             current = assign_next_and_replace(current, new_token);
@@ -166,54 +166,63 @@ fn is_digit(c: char) -> bool {
     c.to_digit(10).is_some()
 }
 
-#[test]
-fn tokenize_test() {
-    let t1 = tokenize("+").ok().unwrap();
-    assert!(t1.unwrap().string.unwrap() == '+'.to_string());
-    let t2 = tokenize("+-").ok().unwrap();
-    assert!(t2.unwrap().string.unwrap() == '+'.to_string());
-    let t3 = tokenize("1+2").ok().unwrap().unwrap().next.unwrap().next;
-    assert!(t3.unwrap().val.unwrap() == 2);
-    let t4 = tokenize("34+5").ok().unwrap();
-    assert!(t4.unwrap().val.unwrap() == 34);
-    let t5 = tokenize("67 - 8").ok().unwrap().unwrap().next.unwrap().next;
-    assert!(t5.unwrap().val.unwrap() == 8);
-    let t6 = tokenize("91 + 2")
-        .ok()
-        .unwrap()
-        .unwrap()
-        .next
-        .unwrap()
-        .next
-        .unwrap()
-        .next;
-    assert!(t6.unwrap().kind == TokenKind::Eof);
-    let t7 = tokenize("1*(2 + 3)/(4-2)").ok().unwrap();
-    assert_eq!(t7.unwrap().val, Some(1));
-    let t8 = tokenize("1 >= 2").ok().unwrap().unwrap().next;
-    assert_eq!(t8.unwrap().string, Some(">=".to_string()));
-    let t9 = tokenize("1 != 2").ok().unwrap().unwrap().next;
-    assert_eq!(t9.unwrap().string, Some("!=".to_string()));
-    let t10 = tokenize("1 < 2").ok().unwrap().unwrap().next;
-    assert_eq!(t10.unwrap().string, Some("<".to_string()));
-    let t11 = tokenize("a + 1").ok().unwrap();
-    assert_eq!(t11.unwrap().string, Some("a".to_string()));
-    let t12 = tokenize("a = 1;").ok().unwrap().unwrap().next;
-    assert_eq!(t12.unwrap().string, Some("=".to_string()));
-    let t13 = tokenize("21;38").ok().unwrap().unwrap().next;
-    assert_eq!(t13.unwrap().string, Some(";".to_string()));
-    let t14 = tokenize("ab=38").ok().unwrap();
-    assert_eq!(t14.unwrap().string, Some("ab".to_string()));
-    let t15 = tokenize("ab-c").ok().unwrap();
-    assert_eq!(t15.unwrap().string, Some("ab".to_string()));
-    let t16 = tokenize("return 0").ok().unwrap();
-    assert_eq!(t16.unwrap().kind, TokenKind::Return);
-    let t17 = tokenize("return_ = 0").ok().unwrap();
-    assert_ne!(t17.unwrap().kind, TokenKind::Return);
-    let t18 = tokenize("return 0; a").ok().unwrap().unwrap().next;
-    assert_eq!(t18.unwrap().string, Some("0".to_string()));
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    fn print_token(token: &Option<Box<Token>>) -> String {
+        match &token {
+            Some(token) => {
+                let this = match token.kind {
+                    TokenKind::Num => token.val.unwrap().to_string() + "|",
+                    TokenKind::Eof => "Eof".to_string(),
+                    _ => token.string.clone().unwrap() + "|",
+                };
+
+                this + &print_token(&token.next)
+            }
+            None => String::new(),
+        }
+    }
+
+    #[test]
+    fn tokenize_test() {
+        let t = tokenize("+").ok().unwrap();
+        assert_eq!(print_token(&t), "+|Eof".to_string());
+        let t = tokenize("+-").ok().unwrap();
+        assert_eq!(print_token(&t), "+|-|Eof".to_string());
+        let t = tokenize("1+2").ok().unwrap();
+        assert_eq!(print_token(&t), "1|+|2|Eof".to_string());
+        let t = tokenize("34+5").ok().unwrap();
+        assert_eq!(print_token(&t), "34|+|5|Eof".to_string());
+        let t = tokenize("67 - 8").ok().unwrap();
+        assert_eq!(print_token(&t), "67|-|8|Eof".to_string());
+        let t = tokenize("1*(2 + 3)/(4-2)").ok().unwrap();
+        assert_eq!(print_token(&t), "1|*|(|2|+|3|)|/|(|4|-|2|)|Eof".to_string());
+        let t = tokenize("1 >= 2").ok().unwrap();
+        assert_eq!(print_token(&t), "1|>=|2|Eof".to_string());
+        let t = tokenize("1 != 2").ok().unwrap();
+        assert_eq!(print_token(&t), "1|!=|2|Eof".to_string());
+        let t = tokenize("1 < 2").ok().unwrap();
+        assert_eq!(print_token(&t), "1|<|2|Eof".to_string());
+        let t = tokenize("a + 1").ok().unwrap();
+        assert_eq!(print_token(&t), "a|+|1|Eof".to_string());
+        let t = tokenize("a = 1;").ok().unwrap();
+        assert_eq!(print_token(&t), "a|=|1|;|Eof".to_string());
+        let t = tokenize("21;38").ok().unwrap();
+        assert_eq!(print_token(&t), "21|;|38|Eof".to_string());
+        let t = tokenize("ab=38").ok().unwrap();
+        assert_eq!(print_token(&t), "ab|=|38|Eof".to_string());
+        let t = tokenize("ab-c").ok().unwrap();
+        assert_eq!(print_token(&t), "ab|-|c|Eof".to_string());
+        let t = tokenize("return 0;").ok().unwrap();
+        assert_eq!(t.unwrap().kind, TokenKind::Return);
+        let t = tokenize("return_ = 0").ok().unwrap();
+        assert_ne!(t.unwrap().kind, TokenKind::Return);
+        let t = tokenize("return 0; a").ok().unwrap();
+        assert_eq!(print_token(&t), "return|0|;|a|Eof".to_string());
+    }
+}
 struct StringReader {
     input: String,
     index: usize,
@@ -275,7 +284,6 @@ impl StringReader {
     fn compare<'a>(&mut self, s: &'a str, offset: Option<i32>) -> bool {
         let s = s.to_string();
         let c = self.take(s.len(), offset);
-        println!("{:?}", c);
         s == c
     }
 
