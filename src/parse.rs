@@ -1,6 +1,6 @@
 use super::tokenize::*;
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum NodeKind {
     Add,           // +
     Sub,           // -
@@ -13,8 +13,10 @@ pub enum NodeKind {
     Assign,        // =
     LocalVariable, // local variable
     Num,           // Integer
+    Return,        // Return
 }
 
+#[derive(Debug)]
 pub struct Node {
     pub kind: NodeKind,
     pub lhs: Option<Box<Node>>,
@@ -51,6 +53,15 @@ impl Node {
             rhs: None,
             val: None,
             offset: Some(offset),
+        }
+    }
+    pub fn new_node_return(lhs: Box<Node>) -> Node {
+        Node {
+            kind: NodeKind::Return,
+            lhs: Some(lhs),
+            rhs: None,
+            val: None,
+            offset: None,
         }
     }
 }
@@ -133,7 +144,11 @@ impl<'a> Parser<'a> {
     }
 
     fn stmt(&mut self) -> Box<Node> {
-        let node = self.expr();
+        let node = if consume("return", &mut self.token) {
+            Box::new(Node::new_node_return(self.expr()))
+        } else {
+            self.expr()
+        };
         expect(";", &mut self.token);
         node
     }
@@ -274,8 +289,9 @@ fn expect(op: &str, token: &mut Option<Box<Token>>) {
 
 fn is_expected(op: &str, token: &mut Option<Box<Token>>) -> bool {
     if let Some(t) = token {
-        if t.kind != TokenKind::Reserved {
-            return false;
+        match t.kind {
+            TokenKind::Reserved | TokenKind::Return => (),
+            _ => return false,
         }
         if let Some(s) = &t.string {
             if s.len() != t.len {

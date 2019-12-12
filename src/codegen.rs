@@ -14,6 +14,14 @@ pub fn gen_lval(node: &mut Option<Box<Node>>) {
 pub fn gen(node: &mut Option<Box<Node>>) {
     if let Some(n) = node {
         match n.kind {
+            NodeKind::Return => {
+                gen(&mut n.lhs);
+                print!("  pop rax\n");
+                print!("  mov rsp, rbp\n");
+                print!("  pop rbp\n");
+                print!("  ret\n");
+                return;
+            }
             NodeKind::Num => {
                 print!("  push {}\n", n.val.unwrap());
                 return;
