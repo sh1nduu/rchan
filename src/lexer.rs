@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Ident(String), // main
     Int(i32),      // 1
@@ -31,8 +31,8 @@ impl Loc {
 
 #[derive(Debug, PartialEq)]
 pub struct Annot<T> {
-    value: T,
-    loc: Loc,
+    pub value: T,
+    pub loc: Loc,
 }
 
 impl<T> Annot<T> {

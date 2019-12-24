@@ -1,11 +1,12 @@
 use super::lexer::*;
+use std::iter::Peekable;
 
 #[derive(Debug, PartialEq)]
 pub enum NodeKind {
     Int(i32),
     LocalVariable(String),
     Assign,
-    Return,
+    Return(Box<Node>),
     UniOp {
         op: UniOp,
         e: Box<Node>,
@@ -41,16 +42,23 @@ impl Node {
         Self::new(NodeKind::Int(n), loc)
     }
     fn new_lvar(name: &str, loc: Loc) -> Self {
-        Self::new(NodeKind::LocalVariable(name), loc)
+        Self::new(NodeKind::LocalVariable(name.to_string()), loc)
     }
-    fn new_return(loc: Loc) -> Self {
-        Self::new(NodeKind::Return(n), loc)
+    fn new_return(node: Node, loc: Loc) -> Self {
+        Self::new(NodeKind::Return(Box::new(node)), loc)
     }
     fn new_uniop(op: UniOp, e: Node, loc: Loc) -> Self {
         Self::new(NodeKind::UniOp { op, e: Box::new(e) }, loc)
     }
-    fn new_binop(op: BinOp, lhs: Node, rhs: ,loc: Loc) -> Self {
-        Self::new(NodeKind::BinOp { op, lhs: Box::new(lhs), rhs: Box::new(rhs) }, loc)
+    fn new_binop(op: BinOp, lhs: Node, rhs: Node, loc: Loc) -> Self {
+        Self::new(
+            NodeKind::BinOp {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+            loc,
+        )
     }
 }
 
@@ -90,16 +98,96 @@ impl BinOp {
 }
 
 pub enum ParseError {
-    Unexpected(Token)
+    Unexpected(Token),
+    Eof,
 }
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, ParseError> {
     let mut tokens = tokens.into_iter().peekable();
-    let mut code = Vec::new();
+    let mut code = Vec::<Node>::new();
     loop {
         match tokens.peek() {
-            Some(_) => unimplemented!(),
+            Some(_) => code.push(stmt(&mut tokens)?),
             None => return Ok(code),
         }
     }
+}
+
+fn stmt<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    let node = match tokens.peek().map(|t| &t.value) {
+        Some(TokenKind::Return) => match tokens.next().unwrap() {
+            Token {
+                value: TokenKind::Return,
+                loc,
+            } => Node::new_return(expr(tokens)?, loc),
+            _ => unreachable!(),
+        },
+        _ => expr(tokens)?,
+    };
+    match tokens.peek() {
+        Some(Token {
+            value: TokenKind::Eof,
+            ..
+        }) => Ok(node),
+        _ => Err(ParseError::Eof),
+    }
+}
+
+fn expr<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    unimplemented!();
+}
+
+fn assign<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    unimplemented!();
+}
+
+fn equality<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    unimplemented!();
+}
+
+fn relational<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    unimplemented!();
+}
+
+fn add<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    unimplemented!();
+}
+
+fn mul<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    unimplemented!();
+}
+
+fn unary<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    unimplemented!();
+}
+
+fn primary<Tokens>(tokens: &mut Peekable<Tokens>) -> Result<Node, ParseError>
+where
+    Tokens: Iterator<Item = Token>,
+{
+    unimplemented!();
 }
