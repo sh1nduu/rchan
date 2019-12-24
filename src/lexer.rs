@@ -41,7 +41,7 @@ impl<T> Annot<T> {
     }
 }
 
-type Token = Annot<TokenKind>;
+pub type Token = Annot<TokenKind>;
 
 impl Token {
     fn new_ident(s: &str, loc: Loc) -> Self {
