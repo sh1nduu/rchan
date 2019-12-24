@@ -10,7 +10,9 @@ pub enum TokenKind {
     Quo,           // /
     LParen,        // (
     RParen,        // )
+    ASSIGN,        // =
     EQ,            // ==
+    NEQ,           // !=
     LEQ,           // <=
     GEQ,           // >=
     LSS,           // <
@@ -72,8 +74,14 @@ impl Token {
     fn new_rparen(loc: Loc) -> Self {
         Self::new(TokenKind::RParen, loc)
     }
+    fn new_assign(loc: Loc) -> Self {
+        Self::new(TokenKind::ASSIGN, loc)
+    }
     fn new_eq(loc: Loc) -> Self {
         Self::new(TokenKind::EQ, loc)
+    }
+    fn new_neq(loc: Loc) -> Self {
+        Self::new(TokenKind::NEQ, loc)
     }
     fn new_leq(loc: Loc) -> Self {
         Self::new(TokenKind::LEQ, loc)
@@ -89,71 +97,21 @@ impl Token {
     }
 }
 
-#[derive(Debug)]
-pub enum LexErrorKind {
-    InvalidChar(char),
-    Eof,
-}
-
-type LexError = Annot<LexErrorKind>;
-
-impl LexError {
-    fn new_invalid_char(c: char, loc: Loc) -> Self {
-        LexError::new(LexErrorKind::InvalidChar(c), loc)
-    }
-    fn new_eof(loc: Loc) -> Self {
-        LexError::new(LexErrorKind::Eof, loc)
-    }
-}
-
-pub struct Lexer;
-
-pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
-    let mut tokens = Vec::<Token>::new();
-    let input: Vec<char> = input.chars().collect();
-    let mut pos = 0;
-
-    macro_rules! lex_a_token {
-        ($lexer:expr) => {{
-            let (tok, p) = $lexer;
-            tokens.push(tok);
-            pos = p;
-        }};
-    }
-
-    while pos < input.len() {
-        let c = input[pos];
-        match c {
-            ' ' => pos += 1,
-            c if is_number(c) => lex_a_token!(lex_int(&input, pos)),
-            '=' | '<' | '>' if input[pos + 1] == '=' => match c {
-                '=' => lex_a_token!(lex_eq(&input, pos)?),
-                '<' => lex_a_token!(lex_leq(&input, pos)?),
-                '>' => lex_a_token!(lex_geq(&input, pos)?),
-                _ => unimplemented!(),
-            },
-            '+' => lex_a_token!(lex_add(&input, pos)?),
-            '-' => lex_a_token!(lex_sub(&input, pos)?),
-            '*' => lex_a_token!(lex_mul(&input, pos)?),
-            '/' => lex_a_token!(lex_quo(&input, pos)?),
-            '(' => lex_a_token!(lex_lparen(&input, pos)?),
-            ')' => lex_a_token!(lex_rparen(&input, pos)?),
-            '<' => lex_a_token!(lex_lss(&input, pos)?),
-            '>' => lex_a_token!(lex_grt(&input, pos)?),
-            ';' => lex_a_token!(lex_eof(&input, pos)?),
-            _ => unimplemented!(),
-        }
-        println!("input: {:?}", input);
-        println!("c: {:?}", c);
-        println!("pos: {:?}", pos);
-        println!("{:?}", tokens);
-    }
-
-    Ok(tokens)
-}
-
 fn is_number(c: char) -> bool {
     c.to_digit(10).is_some()
+}
+
+fn is_identifier_nameable(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+fn is_match(input: &Vec<char>, pos: usize, expected: &str) -> bool {
+    if input.len() <= pos {
+        return false;
+    }
+    let end = pos + expected.len();
+    let input_str: String = input[pos..(end)].into_iter().collect();
+    input_str == expected
 }
 
 fn consume_string(
@@ -182,11 +140,20 @@ fn lex_int(input: &Vec<char>, mut pos: usize) -> (Token, usize) {
     (Token::new_int(n, Loc(start, pos)), pos)
 }
 
+fn lex_identifier(input: &Vec<char>, mut pos: usize) -> (Token, usize) {
+    let start = pos;
+    while pos < input.len() && is_identifier_nameable(input[pos]) {
+        pos += 1;
+    }
+    let n_str: String = input[start..pos].into_iter().collect();
+    (Token::new_ident(&n_str, Loc(start, pos)), pos)
+}
+
 fn lex_add(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
     consume_string(input, start, "+").map(|(_, end)| (Token::new_add(Loc(start, end)), end))
 }
 fn lex_return(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "return").map(|(_, end)| (Token::new_add(Loc(start, end)), end))
+    consume_string(input, start, "return").map(|(_, end)| (Token::new_return(Loc(start, end)), end))
 }
 fn lex_eof(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
     consume_string(input, start, ";").map(|(_, end)| (Token::new_eof(Loc(start, end)), end))
@@ -209,17 +176,89 @@ fn lex_rparen(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexErro
 fn lex_eq(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
     consume_string(input, start, "==").map(|(_, end)| (Token::new_eq(Loc(start, end)), end))
 }
+fn lex_neq(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
+    consume_string(input, start, "!=").map(|(_, end)| (Token::new_neq(Loc(start, end)), end))
+}
 fn lex_leq(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
     consume_string(input, start, "<=").map(|(_, end)| (Token::new_leq(Loc(start, end)), end))
 }
 fn lex_geq(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
     consume_string(input, start, ">=").map(|(_, end)| (Token::new_geq(Loc(start, end)), end))
 }
+fn lex_assign(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
+    consume_string(input, start, "=").map(|(_, end)| (Token::new_assign(Loc(start, end)), end))
+}
 fn lex_lss(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
     consume_string(input, start, "<").map(|(_, end)| (Token::new_lss(Loc(start, end)), end))
 }
 fn lex_grt(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
     consume_string(input, start, ">").map(|(_, end)| (Token::new_grt(Loc(start, end)), end))
+}
+
+#[derive(Debug)]
+pub enum LexErrorKind {
+    InvalidChar(char),
+    Eof,
+}
+
+type LexError = Annot<LexErrorKind>;
+
+impl LexError {
+    fn new_invalid_char(c: char, loc: Loc) -> Self {
+        LexError::new(LexErrorKind::InvalidChar(c), loc)
+    }
+    fn new_eof(loc: Loc) -> Self {
+        LexError::new(LexErrorKind::Eof, loc)
+    }
+}
+
+pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
+    let mut tokens = Vec::<Token>::new();
+    let input: Vec<char> = input.chars().collect();
+    let mut pos = 0;
+
+    macro_rules! lex_a_token {
+        ($lexer:expr) => {{
+            let (tok, p) = $lexer;
+            tokens.push(tok);
+            pos = p;
+        }};
+    }
+
+    while pos < input.len() {
+        let c = input[pos];
+        match c {
+            ' ' => pos += 1,
+            c if is_number(c) => lex_a_token!(lex_int(&input, pos)),
+            c if is_identifier_nameable(c) => {
+                if is_match(&input, pos, "return") {
+                    lex_a_token!(lex_return(&input, pos)?)
+                } else {
+                    lex_a_token!(lex_identifier(&input, pos))
+                }
+            }
+            '=' | '<' | '>' | '!' if input[pos + 1] == '=' => match c {
+                '=' => lex_a_token!(lex_eq(&input, pos)?),
+                '<' => lex_a_token!(lex_leq(&input, pos)?),
+                '>' => lex_a_token!(lex_geq(&input, pos)?),
+                '!' => lex_a_token!(lex_neq(&input, pos)?),
+                _ => unimplemented!(),
+            },
+            '+' => lex_a_token!(lex_add(&input, pos)?),
+            '-' => lex_a_token!(lex_sub(&input, pos)?),
+            '*' => lex_a_token!(lex_mul(&input, pos)?),
+            '/' => lex_a_token!(lex_quo(&input, pos)?),
+            '(' => lex_a_token!(lex_lparen(&input, pos)?),
+            ')' => lex_a_token!(lex_rparen(&input, pos)?),
+            '=' => lex_a_token!(lex_assign(&input, pos)?),
+            '<' => lex_a_token!(lex_lss(&input, pos)?),
+            '>' => lex_a_token!(lex_grt(&input, pos)?),
+            ';' => lex_a_token!(lex_eof(&input, pos)?),
+            _ => unimplemented!(),
+        }
+    }
+
+    Ok(tokens)
 }
 
 #[cfg(test)]
@@ -262,7 +301,7 @@ mod tests {
     }
     #[test]
     fn test_3() -> Result<(), LexError> {
-        let tokens = lex("1>1>=1==1<=1<1")?;
+        let tokens = lex("1>1>=1==1<=1<1!=1")?;
         assert_eq!(
             tokens,
             vec!(
@@ -277,6 +316,35 @@ mod tests {
                 Token::new_int(1, Loc(11, 12)),
                 Token::new_lss(Loc(12, 13)),
                 Token::new_int(1, Loc(13, 14)),
+                Token::new_neq(Loc(14, 16)),
+                Token::new_int(1, Loc(16, 17)),
+            )
+        );
+        Ok(())
+    }
+    #[test]
+    fn test_4() -> Result<(), LexError> {
+        let tokens = lex("return 1;")?;
+        assert_eq!(
+            tokens,
+            vec!(
+                Token::new_return(Loc(0, 6)),
+                Token::new_int(1, Loc(7, 8)),
+                Token::new_eof(Loc(8, 9)),
+            )
+        );
+        Ok(())
+    }
+    #[test]
+    fn test_5() -> Result<(), LexError> {
+        let tokens = lex("a = 1;")?;
+        assert_eq!(
+            tokens,
+            vec!(
+                Token::new_ident("a", Loc(0, 1)),
+                Token::new_assign(Loc(2, 3)),
+                Token::new_int(1, Loc(4, 5)),
+                Token::new_eof(Loc(5, 6)),
             )
         );
         Ok(())
