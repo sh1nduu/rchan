@@ -19,7 +19,7 @@ pub enum TokenKind {
     GRT,           // >
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Loc(usize, usize);
 
 impl Loc {
