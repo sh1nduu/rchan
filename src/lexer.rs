@@ -23,7 +23,7 @@ pub enum TokenKind {
 pub struct Loc(usize, usize);
 
 impl Loc {
-    fn merge(&self, other: &Self) -> Loc {
+    pub fn merge(&self, other: &Self) -> Loc {
         use std::cmp::{max, min};
         Loc(min(self.0, other.0), max(self.1, other.1))
     }
@@ -106,10 +106,10 @@ fn is_identifier_nameable(c: char) -> bool {
 }
 
 fn is_match(input: &Vec<char>, pos: usize, expected: &str) -> bool {
-    if input.len() <= pos {
+    let end = pos + expected.len();
+    if input.len() <= pos || input.len() <= end {
         return false;
     }
-    let end = pos + expected.len();
     let input_str: String = input[pos..(end)].into_iter().collect();
     input_str == expected
 }
@@ -224,7 +224,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
     while pos < input.len() {
         let c = input[pos];
         match c {
-            ' ' => pos += 1,
+            ' ' | '\n' => pos += 1,
             c if is_number(c) => lex_a_token!(lex_int(&input, pos)),
             c if is_identifier_nameable(c) => {
                 if is_match(&input, pos, "return") {

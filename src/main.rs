@@ -1,6 +1,8 @@
 extern crate rchan;
 
-use rchan::lexer::*;
+use rchan::generator;
+use rchan::lexer;
+use rchan::parser;
 use std::env;
 
 fn parse_arguments() -> Result<String, std::io::Error> {
@@ -18,6 +20,11 @@ fn parse_arguments() -> Result<String, std::io::Error> {
 
 fn main() -> Result<(), std::io::Error> {
     let input = parse_arguments()?;
+    let tokens = lexer::lex(&input).unwrap();
+    // println!("{:?}", tokens);
+    let code = parser::parse(tokens).unwrap();
+    // println!("{:?}", code);
+    generator::code_gen(code);
 
     Ok(())
 }

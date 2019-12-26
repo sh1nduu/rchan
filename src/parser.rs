@@ -11,10 +11,6 @@ pub enum NodeKind {
         rhs: Box<Node>,
     },
     Return(Box<Node>),
-    UniOp {
-        op: UniOp,
-        e: Box<Node>,
-    },
     BinOp {
         op: BinOp,
         lhs: Box<Node>,
@@ -39,7 +35,7 @@ pub enum BinOpKind {
     LEQ, // <=
 }
 
-type Node = Annot<NodeKind>;
+pub type Node = Annot<NodeKind>;
 impl Node {
     fn new_int(n: i32, loc: Loc) -> Self {
         Self::new(NodeKind::Int(n), loc)
@@ -59,9 +55,6 @@ impl Node {
             loc,
         )
     }
-    fn new_uniop(op: UniOp, e: Node, loc: Loc) -> Self {
-        Self::new(NodeKind::UniOp { op, e: Box::new(e) }, loc)
-    }
     fn new_binop(op: BinOp, lhs: Node, rhs: Node, loc: Loc) -> Self {
         Self::new(
             NodeKind::BinOp {
@@ -75,11 +68,7 @@ impl Node {
 }
 
 type UniOp = Annot<UniOpKind>;
-impl UniOp {
-    fn new_minus(loc: Loc) -> Self {
-        Self::new(UniOpKind::Minus, loc)
-    }
-}
+impl UniOp {}
 
 type BinOp = Annot<BinOpKind>;
 impl BinOp {
@@ -136,7 +125,7 @@ impl LocalVariables {
         self.0
             .iter()
             .position(|x| x.name == s)
-            .map(|x| (x as i32) * 8)
+            .map(|x| ((x as i32) + 1) * 8)
     }
 }
 
@@ -144,6 +133,7 @@ thread_local!(
     static LVARS: RefCell<LocalVariables> = { RefCell::new(LocalVariables::new()) };
 );
 
+#[derive(Debug)]
 pub enum ParseError {
     Unexpected(Token),
     NotClosingParen(Token),
@@ -154,7 +144,8 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Node>, ParseError> {
     let mut tokens = tokens.into_iter().peekable();
     let mut code = Vec::<Node>::new();
     loop {
-        match tokens.peek() {
+        match tokens.peek().map(|t| &t.value) {
+            Some(TokenKind::Eof) => return Ok(code),
             Some(_) => code.push(stmt(&mut tokens)?),
             None => return Ok(code),
         }
@@ -179,7 +170,10 @@ where
         Some(Token {
             value: TokenKind::Eof,
             ..
-        }) => Ok(node),
+        }) => {
+            tokens.next();
+            Ok(node)
+        }
         _ => Err(ParseError::Eof),
     }
 }
@@ -323,8 +317,9 @@ where
             Token {
                 value: TokenKind::Sub,
                 loc,
-            } => Ok(Node::new_uniop(
-                UniOp::new_minus(loc),
+            } => Ok(Node::new_binop(
+                BinOp::new_sub(loc),
+                Node::new_int(0, loc),
                 primary(tokens)?,
                 loc,
             )),
@@ -374,11 +369,14 @@ where
 }
 
 fn find_or_create_local_var(s: &str, loc: Loc) -> Node {
-    LVARS.with(|lvars| match lvars.borrow_mut().find_and_get_offset(&s) {
-        Some(offset) => Node::new_lvar(offset, loc),
-        None => {
-            let offset = lvars.borrow_mut().push(LocalVariable::new(&s));
-            Node::new_lvar(offset, loc)
+    LVARS.with(|lvars| {
+        let mut lvars = lvars.borrow_mut();
+        match lvars.find_and_get_offset(&s) {
+            Some(offset) => Node::new_lvar(offset, loc),
+            None => {
+                let offset = lvars.push(LocalVariable::new(&s));
+                Node::new_lvar(offset, loc)
+            }
         }
     })
 }
