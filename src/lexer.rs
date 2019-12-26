@@ -44,55 +44,55 @@ impl<T> Annot<T> {
 pub type Token = Annot<TokenKind>;
 
 impl Token {
-    fn new_ident(s: &str, loc: Loc) -> Self {
+    fn ident(s: &str, loc: Loc) -> Self {
         Self::new(TokenKind::Ident(s.to_string()), loc)
     }
-    fn new_int(n: i32, loc: Loc) -> Self {
+    fn int(n: i32, loc: Loc) -> Self {
         Self::new(TokenKind::Int(n), loc)
     }
-    fn new_return(loc: Loc) -> Self {
+    fn return_(loc: Loc) -> Self {
         Self::new(TokenKind::Return, loc)
     }
-    fn new_eof(loc: Loc) -> Self {
+    fn eof(loc: Loc) -> Self {
         Self::new(TokenKind::Eof, loc)
     }
-    fn new_add(loc: Loc) -> Self {
+    fn add(loc: Loc) -> Self {
         Self::new(TokenKind::Add, loc)
     }
-    fn new_sub(loc: Loc) -> Self {
+    fn sub(loc: Loc) -> Self {
         Self::new(TokenKind::Sub, loc)
     }
-    fn new_mul(loc: Loc) -> Self {
+    fn mul(loc: Loc) -> Self {
         Self::new(TokenKind::Mul, loc)
     }
-    fn new_quo(loc: Loc) -> Self {
+    fn quo(loc: Loc) -> Self {
         Self::new(TokenKind::Quo, loc)
     }
-    fn new_lparen(loc: Loc) -> Self {
+    fn lparen(loc: Loc) -> Self {
         Self::new(TokenKind::LParen, loc)
     }
-    fn new_rparen(loc: Loc) -> Self {
+    fn rparen(loc: Loc) -> Self {
         Self::new(TokenKind::RParen, loc)
     }
-    fn new_assign(loc: Loc) -> Self {
+    fn assign(loc: Loc) -> Self {
         Self::new(TokenKind::ASSIGN, loc)
     }
-    fn new_eq(loc: Loc) -> Self {
+    fn eq(loc: Loc) -> Self {
         Self::new(TokenKind::EQ, loc)
     }
-    fn new_neq(loc: Loc) -> Self {
+    fn neq(loc: Loc) -> Self {
         Self::new(TokenKind::NEQ, loc)
     }
-    fn new_leq(loc: Loc) -> Self {
+    fn leq(loc: Loc) -> Self {
         Self::new(TokenKind::LEQ, loc)
     }
-    fn new_geq(loc: Loc) -> Self {
+    fn geq(loc: Loc) -> Self {
         Self::new(TokenKind::GEQ, loc)
     }
-    fn new_lss(loc: Loc) -> Self {
+    fn lss(loc: Loc) -> Self {
         Self::new(TokenKind::LSS, loc)
     }
-    fn new_grt(loc: Loc) -> Self {
+    fn grt(loc: Loc) -> Self {
         Self::new(TokenKind::GRT, loc)
     }
 }
@@ -114,18 +114,14 @@ fn is_match(input: &Vec<char>, pos: usize, expected: &str) -> bool {
     input_str == expected
 }
 
-fn consume_string(
-    input: &Vec<char>,
-    pos: usize,
-    expected: &str,
-) -> Result<(String, usize), LexError> {
+fn consume(input: &Vec<char>, pos: usize, expected: &str) -> Result<(String, usize), LexError> {
     if input.len() <= pos {
-        return Err(LexError::new_eof(Loc(pos, pos)));
+        return Err(LexError::eof(Loc(pos, pos)));
     }
     let end = pos + expected.len();
     let input_str: String = input[pos..(end)].into_iter().collect();
     if input_str != expected {
-        return Err(LexError::new_invalid_char(input[pos], Loc(pos, end)));
+        return Err(LexError::invalid_char(input[pos], Loc(pos, end)));
     }
     Ok((expected.to_string(), end))
 }
@@ -137,7 +133,7 @@ fn lex_int(input: &Vec<char>, mut pos: usize) -> (Token, usize) {
     }
     let n_str: String = input[start..pos].into_iter().collect();
     let n: i32 = n_str.parse().unwrap();
-    (Token::new_int(n, Loc(start, pos)), pos)
+    (Token::int(n, Loc(start, pos)), pos)
 }
 
 fn lex_identifier(input: &Vec<char>, mut pos: usize) -> (Token, usize) {
@@ -146,53 +142,53 @@ fn lex_identifier(input: &Vec<char>, mut pos: usize) -> (Token, usize) {
         pos += 1;
     }
     let n_str: String = input[start..pos].into_iter().collect();
-    (Token::new_ident(&n_str, Loc(start, pos)), pos)
+    (Token::ident(&n_str, Loc(start, pos)), pos)
 }
 
 fn lex_add(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "+").map(|(_, end)| (Token::new_add(Loc(start, end)), end))
+    consume(input, start, "+").map(|(_, end)| (Token::add(Loc(start, end)), end))
 }
 fn lex_return(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "return").map(|(_, end)| (Token::new_return(Loc(start, end)), end))
+    consume(input, start, "return").map(|(_, end)| (Token::return_(Loc(start, end)), end))
 }
 fn lex_eof(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, ";").map(|(_, end)| (Token::new_eof(Loc(start, end)), end))
+    consume(input, start, ";").map(|(_, end)| (Token::eof(Loc(start, end)), end))
 }
 fn lex_sub(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "-").map(|(_, end)| (Token::new_sub(Loc(start, end)), end))
+    consume(input, start, "-").map(|(_, end)| (Token::sub(Loc(start, end)), end))
 }
 fn lex_mul(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "*").map(|(_, end)| (Token::new_mul(Loc(start, end)), end))
+    consume(input, start, "*").map(|(_, end)| (Token::mul(Loc(start, end)), end))
 }
 fn lex_quo(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "/").map(|(_, end)| (Token::new_quo(Loc(start, end)), end))
+    consume(input, start, "/").map(|(_, end)| (Token::quo(Loc(start, end)), end))
 }
 fn lex_lparen(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "(").map(|(_, end)| (Token::new_lparen(Loc(start, end)), end))
+    consume(input, start, "(").map(|(_, end)| (Token::lparen(Loc(start, end)), end))
 }
 fn lex_rparen(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, ")").map(|(_, end)| (Token::new_rparen(Loc(start, end)), end))
+    consume(input, start, ")").map(|(_, end)| (Token::rparen(Loc(start, end)), end))
 }
 fn lex_eq(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "==").map(|(_, end)| (Token::new_eq(Loc(start, end)), end))
+    consume(input, start, "==").map(|(_, end)| (Token::eq(Loc(start, end)), end))
 }
 fn lex_neq(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "!=").map(|(_, end)| (Token::new_neq(Loc(start, end)), end))
+    consume(input, start, "!=").map(|(_, end)| (Token::neq(Loc(start, end)), end))
 }
 fn lex_leq(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "<=").map(|(_, end)| (Token::new_leq(Loc(start, end)), end))
+    consume(input, start, "<=").map(|(_, end)| (Token::leq(Loc(start, end)), end))
 }
 fn lex_geq(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, ">=").map(|(_, end)| (Token::new_geq(Loc(start, end)), end))
+    consume(input, start, ">=").map(|(_, end)| (Token::geq(Loc(start, end)), end))
 }
 fn lex_assign(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "=").map(|(_, end)| (Token::new_assign(Loc(start, end)), end))
+    consume(input, start, "=").map(|(_, end)| (Token::assign(Loc(start, end)), end))
 }
 fn lex_lss(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, "<").map(|(_, end)| (Token::new_lss(Loc(start, end)), end))
+    consume(input, start, "<").map(|(_, end)| (Token::lss(Loc(start, end)), end))
 }
 fn lex_grt(input: &Vec<char>, start: usize) -> Result<(Token, usize), LexError> {
-    consume_string(input, start, ">").map(|(_, end)| (Token::new_grt(Loc(start, end)), end))
+    consume(input, start, ">").map(|(_, end)| (Token::grt(Loc(start, end)), end))
 }
 
 #[derive(Debug)]
@@ -204,10 +200,10 @@ pub enum LexErrorKind {
 type LexError = Annot<LexErrorKind>;
 
 impl LexError {
-    fn new_invalid_char(c: char, loc: Loc) -> Self {
+    fn invalid_char(c: char, loc: Loc) -> Self {
         LexError::new(LexErrorKind::InvalidChar(c), loc)
     }
-    fn new_eof(loc: Loc) -> Self {
+    fn eof(loc: Loc) -> Self {
         LexError::new(LexErrorKind::Eof, loc)
     }
 }
@@ -271,10 +267,10 @@ mod tests {
         assert_eq!(
             tokens,
             vec!(
-                Token::new_int(1, Loc(0, 1)),
-                Token::new_add(Loc(2, 3)),
-                Token::new_int(1, Loc(4, 5)),
-                Token::new_eof(Loc(5, 6)),
+                Token::int(1, Loc(0, 1)),
+                Token::add(Loc(2, 3)),
+                Token::int(1, Loc(4, 5)),
+                Token::eof(Loc(5, 6)),
             )
         );
         Ok(())
@@ -285,16 +281,16 @@ mod tests {
         assert_eq!(
             tokens,
             vec!(
-                Token::new_lparen(Loc(0, 1)),
-                Token::new_int(1, Loc(1, 2)),
-                Token::new_sub(Loc(2, 3)),
-                Token::new_int(1, Loc(3, 4)),
-                Token::new_rparen(Loc(4, 5)),
-                Token::new_mul(Loc(5, 6)),
-                Token::new_int(1, Loc(6, 7)),
-                Token::new_quo(Loc(7, 8)),
-                Token::new_int(1, Loc(8, 9)),
-                Token::new_eof(Loc(9, 10)),
+                Token::lparen(Loc(0, 1)),
+                Token::int(1, Loc(1, 2)),
+                Token::sub(Loc(2, 3)),
+                Token::int(1, Loc(3, 4)),
+                Token::rparen(Loc(4, 5)),
+                Token::mul(Loc(5, 6)),
+                Token::int(1, Loc(6, 7)),
+                Token::quo(Loc(7, 8)),
+                Token::int(1, Loc(8, 9)),
+                Token::eof(Loc(9, 10)),
             )
         );
         Ok(())
@@ -305,19 +301,19 @@ mod tests {
         assert_eq!(
             tokens,
             vec!(
-                Token::new_int(1, Loc(0, 1)),
-                Token::new_grt(Loc(1, 2)),
-                Token::new_int(1, Loc(2, 3)),
-                Token::new_geq(Loc(3, 5)),
-                Token::new_int(1, Loc(5, 6)),
-                Token::new_eq(Loc(6, 8)),
-                Token::new_int(1, Loc(8, 9)),
-                Token::new_leq(Loc(9, 11)),
-                Token::new_int(1, Loc(11, 12)),
-                Token::new_lss(Loc(12, 13)),
-                Token::new_int(1, Loc(13, 14)),
-                Token::new_neq(Loc(14, 16)),
-                Token::new_int(1, Loc(16, 17)),
+                Token::int(1, Loc(0, 1)),
+                Token::grt(Loc(1, 2)),
+                Token::int(1, Loc(2, 3)),
+                Token::geq(Loc(3, 5)),
+                Token::int(1, Loc(5, 6)),
+                Token::eq(Loc(6, 8)),
+                Token::int(1, Loc(8, 9)),
+                Token::leq(Loc(9, 11)),
+                Token::int(1, Loc(11, 12)),
+                Token::lss(Loc(12, 13)),
+                Token::int(1, Loc(13, 14)),
+                Token::neq(Loc(14, 16)),
+                Token::int(1, Loc(16, 17)),
             )
         );
         Ok(())
@@ -328,9 +324,9 @@ mod tests {
         assert_eq!(
             tokens,
             vec!(
-                Token::new_return(Loc(0, 6)),
-                Token::new_int(1, Loc(7, 8)),
-                Token::new_eof(Loc(8, 9)),
+                Token::return_(Loc(0, 6)),
+                Token::int(1, Loc(7, 8)),
+                Token::eof(Loc(8, 9)),
             )
         );
         Ok(())
@@ -341,10 +337,10 @@ mod tests {
         assert_eq!(
             tokens,
             vec!(
-                Token::new_ident("a", Loc(0, 1)),
-                Token::new_assign(Loc(2, 3)),
-                Token::new_int(1, Loc(4, 5)),
-                Token::new_eof(Loc(5, 6)),
+                Token::ident("a", Loc(0, 1)),
+                Token::assign(Loc(2, 3)),
+                Token::int(1, Loc(4, 5)),
+                Token::eof(Loc(5, 6)),
             )
         );
         Ok(())
